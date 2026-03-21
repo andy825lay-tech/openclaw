@@ -1,0 +1,60 @@
+services:
+  nodebb:
+    image: nodebb/docker:latest
+    container_name: nodebb_forum
+    platform: linux/amd64
+    restart: unless-stopped
+    ports:
+      - "4567:4567"
+    volumes:
+      - ./nodebb_data:/usr/src/nodebb/public/uploads
+      - ./nodebb_config.json:/usr/src/nodebb/config.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: nodebb_postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=nodebb
+      - POSTGRES_USER=nodebb
+      - POSTGRES_PASSWORD=${PG_PASSWORD:-nodebb_secret_password}
+    volumes:
+      - ./postgres_data:/var/lib/postgresql/data
+      - ./init_postgres.sh:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nodebb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:alpine
+    container_name: nodebb_redis
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    volumes:
+      - ./redis_data:/data
+
+  nginx:
+    image: nginx:alpine
+    container_name: nodebb_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - nodebb
+
+volumes:
+  nodebb_data:
+  postgres_data:
+  redis_data:

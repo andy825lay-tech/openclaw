@@ -1,0 +1,151 @@
+{
+  "name": "Ollama LLM Automation Workflow (mlx_lm.server)",
+  "nodes": [
+    {
+      "id": "trigger",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "position": [250, 300]
+    },
+    {
+      "id": "prompt-template",
+      "name": "Prompt Template",
+      "type": "n8n-nodes-base.set",
+      "position": [450, 300],
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "system_prompt",
+              "value": "你是一位專業的 TLS 星群科技客服助理。請用專業、友善的語氣回答問題。"
+            },
+            {
+              "name": "user_prompt",
+              "value": "請分析以下銷售數據並提供建議：{{$json.input_text}}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "ollama-generate",
+      "name": "MLX LLM API (微調版)",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [650, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:8080/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "noAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "messages",
+              "value": "[{\"role\": \"system\", \"content\": \"={{ $json.system_prompt }}\"}, {\"role\": \"user\", \"content\": \"={{ $json.user_prompt }}\"}]"
+            },
+            {
+              "name": "temperature",
+              "value": 0.7
+            },
+            {
+              "name": "max_tokens",
+              "value": 512
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "parse-response",
+      "name": "Parse LLM Response",
+      "type": "n8n-nodes-base.set",
+      "position": [850, 300],
+      "parameters": {
+        "mode": "raw",
+        "duplicateItem": false,
+        "assignments": {
+          "items": [
+            {
+              "id": "response-text",
+              "name": "llm_response",
+              "value": "={{ $json.choices[0].message.content }}",
+              "type": "string"
+            },
+            {
+              "id": "model-used",
+              "name": "model",
+              "value": "={{ $json.model }}",
+              "type": "string"
+            },
+            {
+              "id": "finish-reason",
+              "name": "finish_reason",
+              "value": "={{ $json.choices[0].finish_reason }}",
+              "type": "string"
+            },
+            {
+              "id": "usage-prompt",
+              "name": "prompt_tokens",
+              "value": "={{ $json.usage.prompt_tokens }}",
+              "type": "number"
+            },
+            {
+              "id": "usage-completion",
+              "name": "completion_tokens",
+              "value": "={{ $json.usage.completion_tokens }}",
+              "type": "number"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "slack-notify",
+      "name": "Notify via Discord/Slack",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1050, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "YOUR_WEBHOOK_URL",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "content",
+              "value": "🤖 LLM 分析結果（微調版 tls-phi4-mini + LoRA）：\n{{ $json.llm_response }}"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [[{ "node": "Prompt Template", "type": "main", "index": 0 }]]
+    },
+    "Prompt Template": {
+      "main": [[{ "node": "MLX LLM API (微調版)", "type": "main", "index": 0 }]]
+    },
+    "MLX LLM API (微調版)": {
+      "main": [[{ "node": "Parse LLM Response", "type": "main", "index": 0 }]]
+    },
+    "Parse LLM Response": {
+      "main": [[{ "node": "Notify via Discord/Slack", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null
+}
