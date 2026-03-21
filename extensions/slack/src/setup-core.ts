@@ -3,7 +3,6 @@ import {
   createAccountScopedAllowFromSection,
   createAccountScopedGroupAccessSection,
   createLegacyCompatChannelDmPolicy,
-  createStandardChannelSetupStatus,
   DEFAULT_ACCOUNT_ID,
   createEnvPatchedAccountSetupAdapter,
   hasConfiguredSecretInput,
@@ -120,8 +119,7 @@ export function createSlackSetupWizardBase(handlers: {
 
   return {
     channel,
-    status: createStandardChannelSetupStatus({
-      channelLabel: "Slack",
+    status: {
       configuredLabel: "configured",
       unconfiguredLabel: "needs tokens",
       configuredHint: "configured",
@@ -133,7 +131,7 @@ export function createSlackSetupWizardBase(handlers: {
           const account = inspectSlackAccount({ cfg, accountId });
           return account.configured;
         }),
-    }),
+    },
     introNote: {
       title: "Slack socket mode tokens",
       lines: buildSlackSetupLines(),

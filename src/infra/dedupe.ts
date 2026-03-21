@@ -1,4 +1,3 @@
-import { resolveGlobalSingleton } from "../shared/global-singleton.js";
 import { pruneMapToMaxSize } from "./map-size.js";
 
 export type DedupeCache = {
@@ -9,7 +8,7 @@ export type DedupeCache = {
   size: () => number;
 };
 
-export type DedupeCacheOptions = {
+type DedupeCacheOptions = {
   ttlMs: number;
   maxSize: number;
 };
@@ -84,8 +83,4 @@ export function createDedupeCache(options: DedupeCacheOptions): DedupeCache {
     },
     size: () => cache.size,
   };
-}
-
-export function resolveGlobalDedupeCache(key: symbol, options: DedupeCacheOptions): DedupeCache {
-  return resolveGlobalSingleton(key, () => createDedupeCache(options));
 }

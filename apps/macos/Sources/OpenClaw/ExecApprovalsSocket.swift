@@ -378,7 +378,7 @@ private enum ExecHostExecutor {
         let context = await self.buildContext(
             request: request,
             command: validatedRequest.command,
-            rawCommand: validatedRequest.evaluationRawCommand)
+            rawCommand: validatedRequest.displayCommand)
 
         switch ExecHostRequestEvaluator.evaluate(
             context: context,
@@ -476,7 +476,13 @@ private enum ExecHostExecutor {
     {
         guard decision == .allowAlways, context.security == .allowlist else { return }
         var seenPatterns = Set<String>()
-        for pattern in context.allowAlwaysPatterns {
+        for candidate in context.allowlistResolutions {
+            guard let pattern = ExecApprovalHelpers.allowlistPattern(
+                command: context.command,
+                resolution: candidate)
+            else {
+                continue
+            }
             if seenPatterns.insert(pattern).inserted {
                 ExecApprovalsStore.addAllowlistEntry(agentId: context.agentId, pattern: pattern)
             }

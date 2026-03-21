@@ -21,7 +21,8 @@ export default defineConfig({
   ...base,
   test: {
     ...baseTest,
-    // Keep e2e in process forks for deterministic cross-file isolation.
+    // vmForks reuses VM contexts in ways that can leak module state/mocks across
+    // files for our e2e harnesses. Use process forks for deterministic isolation.
     pool: "forks",
     maxWorkers: e2eWorkers,
     silent: !verboseE2E,

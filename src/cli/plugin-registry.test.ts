@@ -60,7 +60,6 @@ describe("ensurePluginRegistryLoaded", () => {
     expect(mocks.loadOpenClawPlugins).toHaveBeenCalledWith(
       expect.objectContaining({
         onlyPluginIds: [],
-        throwOnLoadError: true,
       }),
     );
   });
@@ -86,14 +85,11 @@ describe("ensurePluginRegistryLoaded", () => {
     expect(mocks.loadOpenClawPlugins).toHaveBeenCalledTimes(2);
     expect(mocks.loadOpenClawPlugins).toHaveBeenNthCalledWith(
       1,
-      expect.objectContaining({ onlyPluginIds: [], throwOnLoadError: true }),
+      expect.objectContaining({ onlyPluginIds: [] }),
     );
     expect(mocks.loadOpenClawPlugins).toHaveBeenNthCalledWith(
       2,
-      expect.objectContaining({
-        onlyPluginIds: ["telegram", "slack"],
-        throwOnLoadError: true,
-      }),
+      expect.objectContaining({ onlyPluginIds: ["telegram", "slack"] }),
     );
   });
 });

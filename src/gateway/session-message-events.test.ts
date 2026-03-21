@@ -167,7 +167,7 @@ describe("session.message websocket events", () => {
             }
           ).message?.__openclaw,
         ).toMatchObject({
-          id: appended.ok ? appended.messageId : undefined,
+          id: appended.messageId,
           seq: 1,
         });
       } finally {

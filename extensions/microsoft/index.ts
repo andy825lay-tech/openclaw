@@ -1,5 +1,5 @@
-import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
-import { buildMicrosoftSpeechProvider } from "./speech-provider.js";
+import { definePluginEntry } from "openclaw/plugin-sdk/core";
+import { buildMicrosoftSpeechProvider } from "openclaw/plugin-sdk/speech";
 
 export default definePluginEntry({
   id: "microsoft",

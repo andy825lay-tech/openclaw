@@ -1,5 +1,3 @@
-import { resolveGlobalSingleton } from "../shared/global-singleton.js";
-
 const warningFilterKey = Symbol.for("openclaw.warning-filter");
 
 export type ProcessWarning = {
@@ -65,10 +63,10 @@ function normalizeWarningArgs(args: unknown[]): ProcessWarning {
 }
 
 export function installProcessWarningFilter(): void {
-  const state = resolveGlobalSingleton<ProcessWarningInstallState>(warningFilterKey, () => ({
-    installed: false,
-  }));
-  if (state.installed) {
+  const globalState = globalThis as typeof globalThis & {
+    [warningFilterKey]?: ProcessWarningInstallState;
+  };
+  if (globalState[warningFilterKey]?.installed) {
     return;
   }
 
@@ -95,5 +93,7 @@ export function installProcessWarningFilter(): void {
   }) as typeof process.emitWarning;
 
   process.emitWarning = wrappedEmitWarning;
-  state.installed = true;
+  globalState[warningFilterKey] = {
+    installed: true,
+  };
 }

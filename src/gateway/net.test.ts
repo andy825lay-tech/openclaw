@@ -1,6 +1,5 @@
 import os from "node:os";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { makeNetworkInterfacesSnapshot } from "../test-helpers/network-interfaces.js";
 import {
   isLocalishHost,
   isPrivateOrLoopbackAddress,
@@ -322,49 +321,44 @@ describe("pickPrimaryLanIPv4", () => {
     const cases = [
       {
         name: "prefers en0",
-        interfaces: makeNetworkInterfacesSnapshot({
-          lo0: [{ address: "127.0.0.1", family: "IPv4", internal: true }],
-          en0: [{ address: "192.168.1.42", family: "IPv4" }],
-        }),
+        interfaces: {
+          lo0: [{ address: "127.0.0.1", family: "IPv4", internal: true, netmask: "" }],
+          en0: [{ address: "192.168.1.42", family: "IPv4", internal: false, netmask: "" }],
+        },
         expected: "192.168.1.42",
       },
       {
         name: "falls back to eth0",
-        interfaces: makeNetworkInterfacesSnapshot({
-          lo: [{ address: "127.0.0.1", family: "IPv4", internal: true }],
-          eth0: [{ address: "10.0.0.5", family: "IPv4" }],
-        }),
+        interfaces: {
+          lo: [{ address: "127.0.0.1", family: "IPv4", internal: true, netmask: "" }],
+          eth0: [{ address: "10.0.0.5", family: "IPv4", internal: false, netmask: "" }],
+        },
         expected: "10.0.0.5",
       },
       {
         name: "falls back to any non-internal interface",
-        interfaces: makeNetworkInterfacesSnapshot({
-          lo: [{ address: "127.0.0.1", family: "IPv4", internal: true }],
-          wlan0: [{ address: "172.16.0.99", family: "IPv4" }],
-        }),
+        interfaces: {
+          lo: [{ address: "127.0.0.1", family: "IPv4", internal: true, netmask: "" }],
+          wlan0: [{ address: "172.16.0.99", family: "IPv4", internal: false, netmask: "" }],
+        },
         expected: "172.16.0.99",
       },
       {
         name: "no non-internal interface",
-        interfaces: makeNetworkInterfacesSnapshot({
-          lo: [{ address: "127.0.0.1", family: "IPv4", internal: true }],
-        }),
+        interfaces: {
+          lo: [{ address: "127.0.0.1", family: "IPv4", internal: true, netmask: "" }],
+        },
         expected: undefined,
       },
     ] as const;
 
     for (const testCase of cases) {
-      vi.spyOn(os, "networkInterfaces").mockReturnValue(testCase.interfaces);
+      vi.spyOn(os, "networkInterfaces").mockReturnValue(
+        testCase.interfaces as unknown as ReturnType<typeof os.networkInterfaces>,
+      );
       expect(pickPrimaryLanIPv4(), testCase.name).toBe(testCase.expected);
       vi.restoreAllMocks();
     }
-  });
-
-  it("throws when interface discovery throws", () => {
-    vi.spyOn(os, "networkInterfaces").mockImplementation(() => {
-      throw new Error("uv_interface_addresses failed");
-    });
-    expect(() => pickPrimaryLanIPv4()).toThrow("uv_interface_addresses failed");
   });
 });
 

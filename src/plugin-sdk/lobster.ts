@@ -1,7 +1,7 @@
-// Private Lobster plugin helpers for bundled extensions.
+// Public Lobster plugin helpers.
 // Keep this surface narrow and limited to the Lobster workflow/tool contract.
 
-export { definePluginEntry } from "./plugin-entry.js";
+export { definePluginEntry } from "./core.js";
 export {
   applyWindowsSpawnProgramPolicy,
   materializeWindowsSpawnProgram,

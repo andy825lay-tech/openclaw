@@ -64,7 +64,7 @@ export function registerSecretsCli(program: Command) {
         expectFinal: false,
       });
       if (opts.json) {
-        defaultRuntime.writeJson(result);
+        defaultRuntime.log(JSON.stringify(result, null, 2));
         return;
       }
       const warningCount = Number(
@@ -97,7 +97,7 @@ export function registerSecretsCli(program: Command) {
           allowExec: Boolean(opts.allowExec),
         });
         if (opts.json) {
-          defaultRuntime.writeJson(report);
+          defaultRuntime.log(JSON.stringify(report, null, 2));
         } else {
           defaultRuntime.log(
             `Secrets audit: ${report.status}. plaintext=${report.summary.plaintextCount}, unresolved=${report.summary.unresolvedRefCount}, shadowed=${report.summary.shadowedRefCount}, legacy=${report.summary.legacyResidueCount}.`,
@@ -162,10 +162,16 @@ export function registerSecretsCli(program: Command) {
           fs.writeFileSync(opts.planOut, `${JSON.stringify(configured.plan, null, 2)}\n`, "utf8");
         }
         if (opts.json) {
-          defaultRuntime.writeJson({
-            plan: configured.plan,
-            preflight: configured.preflight,
-          });
+          defaultRuntime.log(
+            JSON.stringify(
+              {
+                plan: configured.plan,
+                preflight: configured.preflight,
+              },
+              null,
+              2,
+            ),
+          );
         } else {
           defaultRuntime.log(
             `Preflight: changed=${configured.preflight.changed}, files=${configured.preflight.changedFiles.length}, warnings=${configured.preflight.warningCount}.`,
@@ -222,7 +228,7 @@ export function registerSecretsCli(program: Command) {
             allowExec: Boolean(opts.allowExec),
           });
           if (opts.json) {
-            defaultRuntime.writeJson(result);
+            defaultRuntime.log(JSON.stringify(result, null, 2));
             return;
           }
           defaultRuntime.log(
@@ -253,7 +259,7 @@ export function registerSecretsCli(program: Command) {
           allowExec: Boolean(opts.allowExec),
         });
         if (opts.json) {
-          defaultRuntime.writeJson(result);
+          defaultRuntime.log(JSON.stringify(result, null, 2));
           return;
         }
         if (opts.dryRun) {

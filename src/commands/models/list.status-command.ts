@@ -36,7 +36,7 @@ import {
   type UsageProviderId,
 } from "../../infra/provider-usage.js";
 import { getShellEnvAppliedKeys, shouldEnableShellEnvFallback } from "../../infra/shell-env.js";
-import { type RuntimeEnv, writeRuntimeJson } from "../../runtime.js";
+import type { RuntimeEnv } from "../../runtime.js";
 import { getTerminalTableWidth, renderTable } from "../../terminal/table.js";
 import { colorize, theme } from "../../terminal/theme.js";
 import { shortenHomePath } from "../../utils.js";
@@ -324,43 +324,49 @@ export async function modelsStatusCommand(
   })();
 
   if (opts.json) {
-    writeRuntimeJson(runtime, {
-      configPath,
-      ...(agentId ? { agentId } : {}),
-      agentDir,
-      defaultModel: defaultLabel,
-      resolvedDefault: resolvedLabel,
-      fallbacks,
-      imageModel: imageModel || null,
-      imageFallbacks,
-      ...(agentId
-        ? {
-            modelConfig: {
-              defaultSource: agentModelPrimary ? "agent" : "defaults",
-              fallbacksSource: agentFallbacksOverride !== undefined ? "agent" : "defaults",
+    runtime.log(
+      JSON.stringify(
+        {
+          configPath,
+          ...(agentId ? { agentId } : {}),
+          agentDir,
+          defaultModel: defaultLabel,
+          resolvedDefault: resolvedLabel,
+          fallbacks,
+          imageModel: imageModel || null,
+          imageFallbacks,
+          ...(agentId
+            ? {
+                modelConfig: {
+                  defaultSource: agentModelPrimary ? "agent" : "defaults",
+                  fallbacksSource: agentFallbacksOverride !== undefined ? "agent" : "defaults",
+                },
+              }
+            : {}),
+          aliases,
+          allowed,
+          auth: {
+            storePath: resolveAuthStorePathForDisplay(agentDir),
+            shellEnvFallback: {
+              enabled: shellFallbackEnabled,
+              appliedKeys: applied,
             },
-          }
-        : {}),
-      aliases,
-      allowed,
-      auth: {
-        storePath: resolveAuthStorePathForDisplay(agentDir),
-        shellEnvFallback: {
-          enabled: shellFallbackEnabled,
-          appliedKeys: applied,
+            providersWithOAuth: providersWithOauth,
+            missingProvidersInUse,
+            providers: providerAuth,
+            unusableProfiles,
+            oauth: {
+              warnAfterMs: authHealth.warnAfterMs,
+              profiles: authHealth.profiles,
+              providers: authHealth.providers,
+            },
+            probes: probeSummary,
+          },
         },
-        providersWithOAuth: providersWithOauth,
-        missingProvidersInUse,
-        providers: providerAuth,
-        unusableProfiles,
-        oauth: {
-          warnAfterMs: authHealth.warnAfterMs,
-          profiles: authHealth.profiles,
-          providers: authHealth.providers,
-        },
-        probes: probeSummary,
-      },
-    });
+        null,
+        2,
+      ),
+    );
     if (opts.check) {
       runtime.exit(checkStatus);
     }

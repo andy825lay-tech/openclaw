@@ -1,16 +1,16 @@
 import {
+  buildOauthProviderAuthResult,
   definePluginEntry,
   type ProviderAuthContext,
   type ProviderAuthResult,
   type ProviderCatalogContext,
-} from "openclaw/plugin-sdk/plugin-entry";
+} from "openclaw/plugin-sdk/minimax-portal-auth";
 import {
   MINIMAX_OAUTH_MARKER,
   createProviderApiKeyAuthMethod,
   ensureAuthProfileStore,
   listProfilesForProvider,
 } from "openclaw/plugin-sdk/provider-auth";
-import { buildOauthProviderAuthResult } from "openclaw/plugin-sdk/provider-auth";
 import { fetchMinimaxUsage } from "openclaw/plugin-sdk/provider-usage";
 import {
   minimaxMediaUnderstandingProvider,
@@ -41,12 +41,7 @@ function portalModelRef(modelId: string): string {
 
 function isModernMiniMaxModel(modelId: string): boolean {
   const lower = modelId.trim().toLowerCase();
-  return (
-    lower === "minimax-m2" ||
-    lower.startsWith("minimax-m2.1") ||
-    lower.startsWith("minimax-m2.5") ||
-    lower.startsWith("minimax-m2.7")
-  );
+  return lower.startsWith("minimax-m2.7") || lower.startsWith("minimax-m2.5");
 }
 
 function buildPortalProviderCatalog(params: { baseUrl: string; apiKey: string }) {
@@ -136,11 +131,6 @@ function createOAuthHandler(region: MiniMaxRegion) {
           agents: {
             defaults: {
               models: {
-                [portalModelRef("MiniMax-M2")]: { alias: "minimax-m2" },
-                [portalModelRef("MiniMax-M2.1")]: { alias: "minimax-m2.1" },
-                [portalModelRef("MiniMax-M2.1-highspeed")]: {
-                  alias: "minimax-m2.1-highspeed",
-                },
                 [portalModelRef("MiniMax-M2.7")]: { alias: "minimax-m2.7" },
                 [portalModelRef("MiniMax-M2.7-highspeed")]: {
                   alias: "minimax-m2.7-highspeed",

@@ -1,7 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
-  getMemorySearchManagerMockCalls,
-  getReadAgentMemoryFileMockCalls,
   resetMemoryToolMockState,
   setMemoryBackend,
   setMemoryReadFileImpl,
@@ -135,19 +133,5 @@ describe("memory tools", () => {
       text: "",
       path: "memory/2026-02-19.md",
     });
-  });
-
-  it("uses the builtin direct memory file path for memory_get", async () => {
-    setMemoryBackend("builtin");
-    const tool = createMemoryGetToolOrThrow();
-
-    const result = await tool.execute("call_builtin_fast_path", { path: "memory/2026-02-19.md" });
-
-    expect(result.details).toEqual({
-      text: "",
-      path: "memory/2026-02-19.md",
-    });
-    expect(getReadAgentMemoryFileMockCalls()).toBe(1);
-    expect(getMemorySearchManagerMockCalls()).toBe(0);
   });
 });

@@ -1,22 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { registerBrowserManageCommands } from "./browser-cli-manage.js";
 import { createBrowserProgram } from "./browser-cli-test-helpers.js";
-import type { CliRuntimeCapture } from "./test-runtime-capture.js";
-
-const runtimeState = vi.hoisted(() => ({ capture: null as CliRuntimeCapture | null }));
-
-function getRuntimeCapture(): CliRuntimeCapture {
-  if (!runtimeState.capture) {
-    throw new Error("runtime capture not initialized");
-  }
-  return runtimeState.capture;
-}
-
-function getRuntime() {
-  return getRuntimeCapture().defaultRuntime;
-}
 
 const mocks = vi.hoisted(() => {
+  const runtimeLog = vi.fn();
+  const runtimeError = vi.fn();
+  const runtimeExit = vi.fn();
   return {
     callBrowserRequest: vi.fn<
       (
@@ -25,6 +14,14 @@ const mocks = vi.hoisted(() => {
         runtimeOpts?: { timeoutMs?: number },
       ) => Promise<Record<string, unknown>>
     >(async () => ({})),
+    runtimeLog,
+    runtimeError,
+    runtimeExit,
+    runtime: {
+      log: runtimeLog,
+      error: runtimeError,
+      exit: runtimeExit,
+    },
   };
 });
 
@@ -40,11 +37,9 @@ vi.mock("./cli-utils.js", () => ({
   ) => await action().catch(onError),
 }));
 
-vi.mock("../runtime.js", async () => {
-  const { createCliRuntimeCapture } = await import("./test-runtime-capture.js");
-  runtimeState.capture ??= createCliRuntimeCapture();
-  return { defaultRuntime: runtimeState.capture.defaultRuntime };
-});
+vi.mock("../runtime.js", () => ({
+  defaultRuntime: mocks.runtime,
+}));
 
 function createProgram() {
   const { program, browser, parentOpts } = createBrowserProgram();
@@ -55,7 +50,9 @@ function createProgram() {
 describe("browser manage output", () => {
   beforeEach(() => {
     mocks.callBrowserRequest.mockClear();
-    getRuntimeCapture().resetRuntimeCapture();
+    mocks.runtimeLog.mockClear();
+    mocks.runtimeError.mockClear();
+    mocks.runtimeExit.mockClear();
   });
 
   it("shows chrome-mcp transport for existing-session status without fake CDP fields", async () => {
@@ -88,7 +85,7 @@ describe("browser manage output", () => {
       from: "user",
     });
 
-    const output = getRuntime().log.mock.calls.at(-1)?.[0] as string;
+    const output = mocks.runtimeLog.mock.calls.at(-1)?.[0] as string;
     expect(output).toContain("transport: chrome-mcp");
     expect(output).not.toContain("cdpPort:");
     expect(output).not.toContain("cdpUrl:");
@@ -124,7 +121,7 @@ describe("browser manage output", () => {
       from: "user",
     });
 
-    const output = getRuntime().log.mock.calls.at(-1)?.[0] as string;
+    const output = mocks.runtimeLog.mock.calls.at(-1)?.[0] as string;
     expect(output).toContain(
       "userDataDir: /Users/test/Library/Application Support/BraveSoftware/Brave-Browser",
     );
@@ -155,7 +152,7 @@ describe("browser manage output", () => {
     const program = createProgram();
     await program.parseAsync(["browser", "profiles"], { from: "user" });
 
-    const output = getRuntime().log.mock.calls.at(-1)?.[0] as string;
+    const output = mocks.runtimeLog.mock.calls.at(-1)?.[0] as string;
     expect(output).toContain("chrome-live: running (2 tabs) [existing-session]");
     expect(output).toContain("transport: chrome-mcp");
     expect(output).not.toContain("port: 0");
@@ -183,7 +180,7 @@ describe("browser manage output", () => {
       { from: "user" },
     );
 
-    const output = getRuntime().log.mock.calls.at(-1)?.[0] as string;
+    const output = mocks.runtimeLog.mock.calls.at(-1)?.[0] as string;
     expect(output).toContain('Created profile "chrome-live"');
     expect(output).toContain("transport: chrome-mcp");
     expect(output).not.toContain("port: 0");
@@ -220,7 +217,7 @@ describe("browser manage output", () => {
       from: "user",
     });
 
-    const output = getRuntime().log.mock.calls.at(-1)?.[0] as string;
+    const output = mocks.runtimeLog.mock.calls.at(-1)?.[0] as string;
     expect(output).toContain("cdpUrl: https://example.com/chrome?token=supers…7890");
     expect(output).not.toContain("alice");
     expect(output).not.toContain("supersecretpasswordvalue1234");

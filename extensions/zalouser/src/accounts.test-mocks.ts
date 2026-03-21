@@ -1,14 +1,10 @@
 import { vi } from "vitest";
 import { createDefaultResolvedZalouserAccount } from "./test-helpers.js";
 
-vi.mock("./accounts.js", () => {
+vi.mock("./accounts.js", async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>;
   return {
-    listZalouserAccountIds: () => ["default"],
-    resolveDefaultZalouserAccountId: () => "default",
+    ...actual,
     resolveZalouserAccountSync: () => createDefaultResolvedZalouserAccount(),
-    resolveZalouserAccount: async () => createDefaultResolvedZalouserAccount(),
-    listEnabledZalouserAccounts: async () => [createDefaultResolvedZalouserAccount()],
-    getZcaUserInfo: async () => null,
-    checkZcaAuthenticated: async () => false,
   };
 });

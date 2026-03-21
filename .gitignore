@@ -31,7 +31,6 @@ apps/android/.gradle/
 apps/android/app/build/
 apps/android/.cxx/
 apps/android/.kotlin/
-apps/android/benchmark/results/
 
 # Bun build artifacts
 *.bun-build
@@ -137,3 +136,22 @@ docs/superpowers
 
 # Deprecated changelog fragment workflow
 changelog/fragments/
+workspaces/main/docker/postgres_data/
+workspaces/*/node_modules/
+# Large data directories
+workspaces/*/docker/*/data*/
+workspaces/main/docker/postgres_data/
+workspaces/main/docker/n8n_local/data*/
+workspaces/main/docker/qdrant_local/qdrant_data/
+workspaces/main/data/
+workspaces/aops/
+*.sqlite
+*.jsonl
+# Large model files
+workspaces/main/models/
+*.safetensors
+*.bin
+*.gguf
+# Node native binaries
+node_modules/
+dist/extensions/*/node_modules/

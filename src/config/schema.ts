@@ -1,14 +1,15 @@
 import crypto from "node:crypto";
 import { CHANNEL_IDS } from "../channels/registry.js";
-import { GENERATED_BASE_CONFIG_SCHEMA } from "./schema.base.generated.js";
+import { VERSION } from "../version.js";
 import type { ConfigUiHint, ConfigUiHints } from "./schema.hints.js";
-import { applySensitiveHints } from "./schema.hints.js";
+import { applySensitiveHints, buildBaseHints, mapSensitivePaths } from "./schema.hints.js";
 import { findWildcardHintMatch, schemaHasChildren } from "./schema.shared.js";
 import { applyDerivedTags } from "./schema.tags.js";
+import { OpenClawSchema } from "./zod-schema.js";
 
 export type { ConfigUiHint, ConfigUiHints } from "./schema.hints.js";
 
-export type ConfigSchema = Record<string, unknown>;
+export type ConfigSchema = ReturnType<typeof OpenClawSchema.toJSONSchema>;
 
 type JsonSchemaNode = Record<string, unknown>;
 
@@ -405,11 +406,43 @@ function setMergedSchemaCache(key: string, value: ConfigSchemaResponse): void {
   mergedSchemaCache.set(key, value);
 }
 
+function stripChannelSchema(schema: ConfigSchema): ConfigSchema {
+  const next = cloneSchema(schema);
+  const root = asSchemaObject(next);
+  if (!root || !root.properties) {
+    return next;
+  }
+  // Allow `$schema` in config files for editor tooling, but hide it from the
+  // Control UI form schema so it does not show up as a configurable section.
+  delete root.properties.$schema;
+  if (Array.isArray(root.required)) {
+    root.required = root.required.filter((key) => key !== "$schema");
+  }
+  const channelsNode = asSchemaObject(root.properties.channels);
+  if (channelsNode) {
+    channelsNode.properties = {};
+    channelsNode.required = [];
+    channelsNode.additionalProperties = true;
+  }
+  return next;
+}
+
 function buildBaseConfigSchema(): ConfigSchemaResponse {
   if (cachedBase) {
     return cachedBase;
   }
-  const next = GENERATED_BASE_CONFIG_SCHEMA as unknown as ConfigSchemaResponse;
+  const schema = OpenClawSchema.toJSONSchema({
+    target: "draft-07",
+    unrepresentable: "any",
+  });
+  schema.title = "OpenClawConfig";
+  const hints = applyDerivedTags(mapSensitivePaths(OpenClawSchema, "", buildBaseHints()));
+  const next = {
+    schema: stripChannelSchema(schema),
+    uiHints: hints,
+    version: VERSION,
+    generatedAt: new Date().toISOString(),
+  };
   cachedBase = next;
   return next;
 }
@@ -417,7 +450,6 @@ function buildBaseConfigSchema(): ConfigSchemaResponse {
 export function buildConfigSchema(params?: {
   plugins?: PluginUiMetadata[];
   channels?: ChannelUiMetadata[];
-  cache?: boolean;
 }): ConfigSchemaResponse {
   const base = buildBaseConfigSchema();
   const plugins = params?.plugins ?? [];
@@ -425,13 +457,10 @@ export function buildConfigSchema(params?: {
   if (plugins.length === 0 && channels.length === 0) {
     return base;
   }
-  const useCache = params?.cache !== false;
-  const cacheKey = useCache ? buildMergedSchemaCacheKey({ plugins, channels }) : null;
-  if (cacheKey) {
-    const cached = mergedSchemaCache.get(cacheKey);
-    if (cached) {
-      return cached;
-    }
+  const cacheKey = buildMergedSchemaCacheKey({ plugins, channels });
+  const cached = mergedSchemaCache.get(cacheKey);
+  if (cached) {
+    return cached;
   }
   const mergedWithoutSensitiveHints = applyHeartbeatTargetHints(
     applyChannelHints(applyPluginHints(base.uiHints, plugins), channels),
@@ -451,9 +480,7 @@ export function buildConfigSchema(params?: {
     schema: mergedSchema,
     uiHints: mergedHints,
   };
-  if (cacheKey) {
-    setMergedSchemaCache(cacheKey, merged);
-  }
+  setMergedSchemaCache(cacheKey, merged);
   return merged;
 }
 

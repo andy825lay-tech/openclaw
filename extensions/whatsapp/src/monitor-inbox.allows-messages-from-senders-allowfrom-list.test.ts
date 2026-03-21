@@ -1,14 +1,14 @@
 import "./monitor-inbox.test-harness.js";
 import { describe, expect, it, vi } from "vitest";
+import { monitorWebInbox } from "./inbound.js";
 import {
-  buildNotifyMessageUpsert,
+  DEFAULT_ACCOUNT_ID,
   expectPairingPromptSent,
+  getAuthDir,
+  getSock,
   installWebMonitorInboxUnitTestHooks,
   mockLoadConfig,
-  settleInboundWork,
-  startInboxMonitor,
   upsertPairingRequestMock,
-  waitForMessageCalls,
 } from "./monitor-inbox.test-harness.js";
 
 const nowSeconds = (offsetMs = 0) => Math.floor((Date.now() + offsetMs) / 1000);
@@ -29,8 +29,26 @@ function createAllowListConfig(allowFrom: string[]) {
 }
 
 async function openInboxMonitor(onMessage = vi.fn()) {
-  const { listener, sock } = await startInboxMonitor(onMessage);
-  return { onMessage, listener, sock };
+  const listener = await monitorWebInbox({
+    verbose: false,
+    accountId: DEFAULT_ACCOUNT_ID,
+    authDir: getAuthDir(),
+    onMessage,
+  });
+  return { onMessage, listener, sock: getSock() };
+}
+
+async function settleInboundWork() {
+  await new Promise((resolve) => setTimeout(resolve, 25));
+}
+
+async function waitForMessageCalls(onMessage: ReturnType<typeof vi.fn>, count: number) {
+  await vi.waitFor(
+    () => {
+      expect(onMessage).toHaveBeenCalledTimes(count);
+    },
+    { timeout: 2_000, interval: 5 },
+  );
 }
 
 async function expectOutboundDmSkipsPairing(params: {
@@ -49,7 +67,13 @@ async function expectOutboundDmSkipsPairing(params: {
   });
 
   const onMessage = vi.fn();
-  const { listener, sock } = await startInboxMonitor(onMessage);
+  const listener = await monitorWebInbox({
+    verbose: false,
+    accountId: DEFAULT_ACCOUNT_ID,
+    authDir: getAuthDir(),
+    onMessage,
+  });
+  const sock = getSock();
 
   try {
     sock.ev.emit("messages.upsert", {
@@ -88,12 +112,16 @@ describe("web monitor inbox", () => {
 
     const { onMessage, listener, sock } = await openInboxMonitor();
 
-    const upsert = buildNotifyMessageUpsert({
-      id: "auth1",
-      remoteJid: "999@s.whatsapp.net",
-      text: "authorized message",
-      timestamp: nowSeconds(60_000),
-    });
+    const upsert = {
+      type: "notify",
+      messages: [
+        {
+          key: { id: "auth1", fromMe: false, remoteJid: "999@s.whatsapp.net" },
+          message: { conversation: "authorized message" },
+          messageTimestamp: nowSeconds(60_000),
+        },
+      ],
+    };
 
     sock.ev.emit("messages.upsert", upsert);
     await waitForMessageCalls(onMessage, 1);
@@ -118,12 +146,16 @@ describe("web monitor inbox", () => {
     const { onMessage, listener, sock } = await openInboxMonitor();
 
     // Message from self (sock.user.id is "123@s.whatsapp.net" in mock)
-    const upsert = buildNotifyMessageUpsert({
-      id: "self1",
-      remoteJid: "123@s.whatsapp.net",
-      text: "self message",
-      timestamp: nowSeconds(60_000),
-    });
+    const upsert = {
+      type: "notify",
+      messages: [
+        {
+          key: { id: "self1", fromMe: false, remoteJid: "123@s.whatsapp.net" },
+          message: { conversation: "self message" },
+          messageTimestamp: nowSeconds(60_000),
+        },
+      ],
+    };
 
     sock.ev.emit("messages.upsert", upsert);
     await waitForMessageCalls(onMessage, 1);
@@ -146,12 +178,20 @@ describe("web monitor inbox", () => {
     const { onMessage, listener, sock } = await openInboxMonitor();
 
     // Message from someone else should be blocked
-    const upsertBlocked = buildNotifyMessageUpsert({
-      id: "no-config-1",
-      remoteJid: "999@s.whatsapp.net",
-      text: "ping",
-      timestamp: nowSeconds(),
-    });
+    const upsertBlocked = {
+      type: "notify",
+      messages: [
+        {
+          key: {
+            id: "no-config-1",
+            fromMe: false,
+            remoteJid: "999@s.whatsapp.net",
+          },
+          message: { conversation: "ping" },
+          messageTimestamp: nowSeconds(),
+        },
+      ],
+    };
 
     sock.ev.emit("messages.upsert", upsertBlocked);
     await vi.waitFor(
@@ -163,12 +203,20 @@ describe("web monitor inbox", () => {
     expect(onMessage).not.toHaveBeenCalled();
     expectPairingPromptSent(sock, "999@s.whatsapp.net", "+999");
 
-    const upsertBlockedAgain = buildNotifyMessageUpsert({
-      id: "no-config-1b",
-      remoteJid: "999@s.whatsapp.net",
-      text: "ping again",
-      timestamp: nowSeconds(),
-    });
+    const upsertBlockedAgain = {
+      type: "notify",
+      messages: [
+        {
+          key: {
+            id: "no-config-1b",
+            fromMe: false,
+            remoteJid: "999@s.whatsapp.net",
+          },
+          message: { conversation: "ping again" },
+          messageTimestamp: nowSeconds(),
+        },
+      ],
+    };
 
     sock.ev.emit("messages.upsert", upsertBlockedAgain);
     await settleInboundWork();
@@ -176,12 +224,20 @@ describe("web monitor inbox", () => {
     expect(sock.sendMessage).toHaveBeenCalledTimes(1);
 
     // Message from self should be allowed
-    const upsertSelf = buildNotifyMessageUpsert({
-      id: "no-config-2",
-      remoteJid: "123@s.whatsapp.net",
-      text: "self ping",
-      timestamp: nowSeconds(),
-    });
+    const upsertSelf = {
+      type: "notify",
+      messages: [
+        {
+          key: {
+            id: "no-config-2",
+            fromMe: false,
+            remoteJid: "123@s.whatsapp.net",
+          },
+          message: { conversation: "self ping" },
+          messageTimestamp: nowSeconds(),
+        },
+      ],
+    };
 
     sock.ev.emit("messages.upsert", upsertSelf);
     await waitForMessageCalls(onMessage, 1);
@@ -256,7 +312,13 @@ describe("web monitor inbox", () => {
   });
 
   it("normalizes participant phone numbers to JIDs in sendReaction", async () => {
-    const { listener, sock } = await startInboxMonitor(vi.fn());
+    const listener = await monitorWebInbox({
+      verbose: false,
+      onMessage: vi.fn(),
+      accountId: DEFAULT_ACCOUNT_ID,
+      authDir: getAuthDir(),
+    });
+    const sock = getSock();
 
     await listener.sendReaction("12345@g.us", "msg123", "👍", false, "+6421000000");
 

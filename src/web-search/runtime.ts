@@ -5,9 +5,10 @@ import type {
   PluginWebSearchProviderEntry,
   WebSearchProviderToolDefinition,
 } from "../plugins/types.js";
-import { resolveBundledPluginWebSearchProviders } from "../plugins/web-search-providers.js";
-import { resolvePluginWebSearchProviders } from "../plugins/web-search-providers.runtime.js";
-import { resolveRuntimeWebSearchProviders } from "../plugins/web-search-providers.runtime.js";
+import {
+  resolvePluginWebSearchProviders,
+  resolveRuntimeWebSearchProviders,
+} from "../plugins/web-search-providers.js";
 import type { RuntimeWebSearchMetadata } from "../secrets/runtime-web-tools.types.js";
 import { normalizeSecretInput } from "../utils/normalize-secret-input.js";
 
@@ -89,15 +90,6 @@ export function listWebSearchProviders(params?: {
   });
 }
 
-export function listConfiguredWebSearchProviders(params?: {
-  config?: OpenClawConfig;
-}): PluginWebSearchProviderEntry[] {
-  return resolvePluginWebSearchProviders({
-    config: params?.config,
-    bundledAllowlistCompat: true,
-  });
-}
-
 export function resolveWebSearchProviderId(params: {
   search?: WebSearchConfig;
   config?: OpenClawConfig;
@@ -105,7 +97,7 @@ export function resolveWebSearchProviderId(params: {
 }): string {
   const providers =
     params.providers ??
-    resolveBundledPluginWebSearchProviders({
+    resolvePluginWebSearchProviders({
       config: params.config,
       bundledAllowlistCompat: true,
     });
@@ -150,7 +142,7 @@ export function resolveWebSearchDefinition(
           config: options?.config,
           bundledAllowlistCompat: true,
         })
-      : resolveBundledPluginWebSearchProviders({
+      : resolvePluginWebSearchProviders({
           config: options?.config,
           bundledAllowlistCompat: true,
         })

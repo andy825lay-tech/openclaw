@@ -178,7 +178,7 @@ type UpdateDryRunPreview = {
 
 function printDryRunPreview(preview: UpdateDryRunPreview, jsonMode: boolean): void {
   if (jsonMode) {
-    defaultRuntime.writeJson(preview);
+    defaultRuntime.log(JSON.stringify(preview, null, 2));
     return;
   }
 

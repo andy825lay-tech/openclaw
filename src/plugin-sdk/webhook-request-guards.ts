@@ -10,12 +10,6 @@ import type { FixedWindowRateLimiter } from "./webhook-memory-guards.js";
 
 export type WebhookBodyReadProfile = "pre-auth" | "post-auth";
 
-export {
-  isRequestBodyLimitError,
-  readRequestBodyWithLimit,
-  requestBodyErrorToText,
-} from "../infra/http-body.js";
-
 export const WEBHOOK_BODY_READ_DEFAULTS = Object.freeze({
   preAuth: {
     maxBytes: 64 * 1024,

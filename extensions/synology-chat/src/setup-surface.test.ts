@@ -1,14 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
+import { buildChannelSetupWizardAdapterFromSetupWizard } from "../../../src/channels/plugins/setup-wizard.js";
 import type { OpenClawConfig } from "../../../src/config/config.js";
+import { createRuntimeEnv } from "../../../test/helpers/extensions/runtime-env.js";
 import {
-  createPluginSetupWizardConfigure,
   createTestWizardPrompter,
-  runSetupWizardConfigure,
   type WizardPrompter,
 } from "../../../test/helpers/extensions/setup-wizard.js";
 import { synologyChatPlugin } from "./channel.js";
+import { synologyChatSetupWizard } from "./setup-surface.js";
 
-const synologyChatConfigure = createPluginSetupWizardConfigure(synologyChatPlugin);
+const synologyChatConfigureAdapter = buildChannelSetupWizardAdapterFromSetupWizard({
+  plugin: synologyChatPlugin,
+  wizard: synologyChatSetupWizard,
+});
 
 describe("synology-chat setup wizard", () => {
   it("configures token and incoming webhook for the default account", async () => {
@@ -27,11 +31,14 @@ describe("synology-chat setup wizard", () => {
       }) as WizardPrompter["text"],
     });
 
-    const result = await runSetupWizardConfigure({
-      configure: synologyChatConfigure,
+    const result = await synologyChatConfigureAdapter.configure({
       cfg: {} as OpenClawConfig,
+      runtime: createRuntimeEnv(),
       prompter,
       options: {},
+      accountOverrides: {},
+      shouldPromptAccountIds: false,
+      forceAllowFrom: false,
     });
 
     expect(result.accountId).toBe("default");
@@ -61,11 +68,13 @@ describe("synology-chat setup wizard", () => {
       }) as WizardPrompter["text"],
     });
 
-    const result = await runSetupWizardConfigure({
-      configure: synologyChatConfigure,
+    const result = await synologyChatConfigureAdapter.configure({
       cfg: {} as OpenClawConfig,
+      runtime: createRuntimeEnv(),
       prompter,
       options: {},
+      accountOverrides: {},
+      shouldPromptAccountIds: false,
       forceAllowFrom: true,
     });
 

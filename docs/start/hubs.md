@@ -17,6 +17,7 @@ Use these hubs to discover every page, including deep dives and reference docs t
 
 - [Index](/)
 - [Getting Started](/start/getting-started)
+- [Quick start](/start/quickstart)
 - [Onboarding](/start/onboarding)
 - [Onboarding (CLI)](/start/wizard)
 - [Setup](/start/setup)
@@ -164,9 +165,9 @@ Use these hubs to discover every page, including deep dives and reference docs t
 ## Extensions + plugins
 
 - [Plugins overview](/tools/plugin)
-- [Building plugins](/plugins/building-plugins)
+- [Building extensions](/plugins/building-extensions)
 - [Plugin manifest](/plugins/manifest)
-- [Agent tools](/plugins/building-plugins#registering-agent-tools)
+- [Agent tools](/plugins/agent-tools)
 - [Plugin bundles](/plugins/bundles)
 - [Community plugins](/plugins/community)
 - [Capability cookbook](/tools/capability-cookbook)

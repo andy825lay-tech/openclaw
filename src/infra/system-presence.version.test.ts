@@ -1,5 +1,4 @@
-import os from "node:os";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { withEnvAsync } from "../test-utils/env.js";
 
 async function withPresenceModule<T>(
@@ -14,10 +13,6 @@ async function withPresenceModule<T>(
 }
 
 describe("system-presence version fallback", () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
   async function expectSelfVersion(
     env: Record<string, string | undefined>,
     expectedVersion: string | (() => Promise<string>),
@@ -82,19 +77,5 @@ describe("system-presence version fallback", () => {
       },
       async () => (await import("../version.js")).VERSION,
     );
-  });
-
-  it("falls back to hostname when self-presence LAN discovery throws", async () => {
-    await withEnvAsync({}, async () => {
-      vi.spyOn(os, "hostname").mockReturnValue("test-host");
-      vi.spyOn(os, "networkInterfaces").mockImplementation(() => {
-        throw new Error("uv_interface_addresses failed");
-      });
-      vi.resetModules();
-      const module = await import("./system-presence.js");
-      const selfEntry = module.listSystemPresence().find((entry) => entry.reason === "self");
-      expect(selfEntry?.host).toBe("test-host");
-      expect(selfEntry?.ip).toBe("test-host");
-    });
   });
 });

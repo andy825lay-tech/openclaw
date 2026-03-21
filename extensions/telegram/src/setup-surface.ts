@@ -1,6 +1,5 @@
 import {
   createAllowFromSection,
-  createStandardChannelSetupStatus,
   DEFAULT_ACCOUNT_ID,
   hasConfiguredSecretInput,
   type OpenClawConfig,
@@ -10,13 +9,8 @@ import {
   splitSetupEntries,
 } from "openclaw/plugin-sdk/setup";
 import type { ChannelSetupDmPolicy, ChannelSetupWizard } from "openclaw/plugin-sdk/setup";
-import { formatCliCommand, formatDocsLink } from "openclaw/plugin-sdk/setup-tools";
 import { inspectTelegramAccount } from "./account-inspect.js";
-import {
-  listTelegramAccountIds,
-  mergeTelegramAccountConfig,
-  resolveTelegramAccount,
-} from "./accounts.js";
+import { listTelegramAccountIds, resolveTelegramAccount } from "./accounts.js";
 import {
   parseTelegramAllowFromId,
   promptTelegramAllowFromForAccount,
@@ -27,54 +21,6 @@ import {
 } from "./setup-core.js";
 
 const channel = "telegram" as const;
-
-function ensureTelegramDefaultGroupMentionGate(
-  cfg: OpenClawConfig,
-  accountId: string,
-): OpenClawConfig {
-  const resolved = resolveTelegramAccount({ cfg, accountId });
-  const wildcardGroup = resolved.config.groups?.["*"];
-  if (wildcardGroup?.requireMention !== undefined) {
-    return cfg;
-  }
-  return patchChannelConfigForAccount({
-    cfg,
-    channel,
-    accountId,
-    patch: {
-      groups: {
-        ...resolved.config.groups,
-        "*": {
-          ...wildcardGroup,
-          requireMention: true,
-        },
-      },
-    },
-  });
-}
-
-function shouldShowTelegramDmAccessWarning(cfg: OpenClawConfig, accountId: string): boolean {
-  const merged = mergeTelegramAccountConfig(cfg, accountId);
-  const policy = merged.dmPolicy ?? "pairing";
-  const hasAllowFrom =
-    Array.isArray(merged.allowFrom) && merged.allowFrom.some((e) => String(e).trim());
-  return policy === "pairing" && !hasAllowFrom;
-}
-
-function buildTelegramDmAccessWarningLines(accountId: string): string[] {
-  const configBase =
-    accountId === DEFAULT_ACCOUNT_ID
-      ? "channels.telegram"
-      : `channels.telegram.accounts.${accountId}`;
-  return [
-    "Your bot is using DM policy: pairing.",
-    "Any Telegram user who discovers the bot can send pairing requests.",
-    "For private use, configure an allowlist with your Telegram user id:",
-    "  " + formatCliCommand(`openclaw config set ${configBase}.dmPolicy "allowlist"`),
-    "  " + formatCliCommand(`openclaw config set ${configBase}.allowFrom '["YOUR_USER_ID"]'`),
-    `Docs: ${formatDocsLink("/channels/pairing", "channels/pairing")}`,
-  ];
-}
 
 const dmPolicy: ChannelSetupDmPolicy = {
   label: "Telegram",
@@ -93,8 +39,7 @@ const dmPolicy: ChannelSetupDmPolicy = {
 
 export const telegramSetupWizard: ChannelSetupWizard = {
   channel,
-  status: createStandardChannelSetupStatus({
-    channelLabel: "Telegram",
+  status: {
     configuredLabel: "configured",
     unconfiguredLabel: "needs token",
     configuredHint: "recommended · configured",
@@ -106,11 +51,7 @@ export const telegramSetupWizard: ChannelSetupWizard = {
         const account = inspectTelegramAccount({ cfg, accountId });
         return account.configured;
       }),
-  }),
-  prepare: async ({ cfg, accountId, credentialValues }) => ({
-    cfg: ensureTelegramDefaultGroupMentionGate(cfg, accountId),
-    credentialValues,
-  }),
+  },
   credentials: [
     {
       inputKey: "token",
@@ -150,11 +91,10 @@ export const telegramSetupWizard: ChannelSetupWizard = {
       "Telegram token missing; use numeric sender ids (usernames require a bot token).",
     parseInputs: splitSetupEntries,
     parseId: parseTelegramAllowFromId,
-    resolveEntries: async ({ cfg, accountId, credentialValues, entries }) =>
+    resolveEntries: async ({ credentialValues, entries }) =>
       resolveTelegramAllowFromEntries({
         credentialValue: credentialValues.token,
         entries,
-        apiRoot: resolveTelegramAccount({ cfg, accountId }).config.apiRoot,
       }),
     apply: async ({ cfg, accountId, allowFrom }) =>
       patchChannelConfigForAccount({
@@ -164,15 +104,6 @@ export const telegramSetupWizard: ChannelSetupWizard = {
         patch: { dmPolicy: "allowlist", allowFrom },
       }),
   }),
-  finalize: async ({ cfg, accountId, prompter }) => {
-    if (!shouldShowTelegramDmAccessWarning(cfg, accountId)) {
-      return;
-    }
-    await prompter.note(
-      buildTelegramDmAccessWarningLines(accountId).join("\n"),
-      "Telegram DM access warning",
-    );
-  },
   dmPolicy,
   disable: (cfg) => setSetupChannelEnabled(cfg, channel, false),
 };

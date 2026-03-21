@@ -1,61 +1,32 @@
+import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
-import {
-  collectExtensionPluginSdkBoundaryInventory,
-  main,
-} from "../scripts/check-extension-plugin-sdk-boundary.mjs";
+import { collectExtensionPluginSdkBoundaryInventory } from "../scripts/check-extension-plugin-sdk-boundary.mjs";
 
-const srcOutsideInventoryPromise =
-  collectExtensionPluginSdkBoundaryInventory("src-outside-plugin-sdk");
-const pluginSdkInternalInventoryPromise =
-  collectExtensionPluginSdkBoundaryInventory("plugin-sdk-internal");
-const relativeOutsidePackageInventoryPromise = collectExtensionPluginSdkBoundaryInventory(
-  "relative-outside-package",
+const repoRoot = process.cwd();
+const scriptPath = path.join(repoRoot, "scripts", "check-extension-plugin-sdk-boundary.mjs");
+const relativeOutsidePackageBaselinePath = path.join(
+  repoRoot,
+  "test",
+  "fixtures",
+  "extension-relative-outside-package-inventory.json",
 );
-const srcOutsideJsonOutputPromise = getJsonOutput("src-outside-plugin-sdk");
-const pluginSdkInternalJsonOutputPromise = getJsonOutput("plugin-sdk-internal");
-const relativeOutsidePackageJsonOutputPromise = getJsonOutput("relative-outside-package");
-
-async function getJsonOutput(
-  mode: Parameters<typeof collectExtensionPluginSdkBoundaryInventory>[0],
-) {
-  const captured = createCapturedIo();
-  const exitCode = await main([`--mode=${mode}`, "--json"], captured.io);
-  return {
-    exitCode,
-    stderr: captured.readStderr(),
-    json: JSON.parse(captured.readStdout()),
-  };
-}
-
-function createCapturedIo() {
-  let stdout = "";
-  let stderr = "";
-  return {
-    io: {
-      stdout: {
-        write(chunk) {
-          stdout += String(chunk);
-        },
-      },
-      stderr: {
-        write(chunk) {
-          stderr += String(chunk);
-        },
-      },
-    },
-    readStdout: () => stdout,
-    readStderr: () => stderr,
-  };
-}
 
 describe("extension src outside plugin-sdk boundary inventory", () => {
-  it("stays empty and sorted", async () => {
-    const inventory = await srcOutsideInventoryPromise;
-    const jsonResult = await srcOutsideJsonOutputPromise;
+  it("is currently empty", async () => {
+    const inventory = await collectExtensionPluginSdkBoundaryInventory("src-outside-plugin-sdk");
 
     expect(inventory).toEqual([]);
+  });
+
+  it("produces stable sorted output", async () => {
+    const first = await collectExtensionPluginSdkBoundaryInventory("src-outside-plugin-sdk");
+    const second = await collectExtensionPluginSdkBoundaryInventory("src-outside-plugin-sdk");
+
+    expect(second).toEqual(first);
     expect(
-      [...inventory].toSorted(
+      [...first].toSorted(
         (left, right) =>
           left.file.localeCompare(right.file) ||
           left.line - right.line ||
@@ -64,33 +35,63 @@ describe("extension src outside plugin-sdk boundary inventory", () => {
           left.resolvedPath.localeCompare(right.resolvedPath) ||
           left.reason.localeCompare(right.reason),
       ),
-    ).toEqual(inventory);
-    expect(jsonResult.exitCode).toBe(0);
-    expect(jsonResult.stderr).toBe("");
-    expect(jsonResult.json).toEqual([]);
+    ).toEqual(first);
+  });
+
+  it("script json output is empty", () => {
+    const stdout = execFileSync(
+      process.execPath,
+      [scriptPath, "--mode=src-outside-plugin-sdk", "--json"],
+      {
+        cwd: repoRoot,
+        encoding: "utf8",
+      },
+    );
+
+    expect(JSON.parse(stdout)).toEqual([]);
   });
 });
 
 describe("extension plugin-sdk-internal boundary inventory", () => {
-  it("stays empty", async () => {
-    const inventory = await pluginSdkInternalInventoryPromise;
-    const jsonResult = await pluginSdkInternalJsonOutputPromise;
+  it("is currently empty", async () => {
+    const inventory = await collectExtensionPluginSdkBoundaryInventory("plugin-sdk-internal");
 
     expect(inventory).toEqual([]);
-    expect(jsonResult.exitCode).toBe(0);
-    expect(jsonResult.stderr).toBe("");
-    expect(jsonResult.json).toEqual([]);
+  });
+
+  it("script json output is empty", () => {
+    const stdout = execFileSync(
+      process.execPath,
+      [scriptPath, "--mode=plugin-sdk-internal", "--json"],
+      {
+        cwd: repoRoot,
+        encoding: "utf8",
+      },
+    );
+
+    expect(JSON.parse(stdout)).toEqual([]);
   });
 });
 
 describe("extension relative-outside-package boundary inventory", () => {
-  it("stays empty", async () => {
-    const inventory = await relativeOutsidePackageInventoryPromise;
-    const jsonResult = await relativeOutsidePackageJsonOutputPromise;
+  it("matches the checked-in baseline", async () => {
+    const inventory = await collectExtensionPluginSdkBoundaryInventory("relative-outside-package");
+    const expected = JSON.parse(fs.readFileSync(relativeOutsidePackageBaselinePath, "utf8"));
 
-    expect(inventory).toEqual([]);
-    expect(jsonResult.exitCode).toBe(0);
-    expect(jsonResult.stderr).toBe("");
-    expect(jsonResult.json).toEqual([]);
+    expect(inventory).toEqual(expected);
+  });
+
+  it("script json output matches the checked-in baseline", () => {
+    const stdout = execFileSync(
+      process.execPath,
+      [scriptPath, "--mode=relative-outside-package", "--json"],
+      {
+        cwd: repoRoot,
+        encoding: "utf8",
+      },
+    );
+    const expected = JSON.parse(fs.readFileSync(relativeOutsidePackageBaselinePath, "utf8"));
+
+    expect(JSON.parse(stdout)).toEqual(expected);
   });
 });

@@ -43,12 +43,10 @@ function expectExhaustedDecision(params: { failureCounts: Record<string, number>
     now,
   });
 
-  if (!decision) {
-    throw new Error("expected an exhausted auto-presence decision");
-  }
-  expect(decision.state).toBe("exhausted");
-  expect(decision.presence.status).toBe("dnd");
-  expect(decision.presence.activities[0]?.state).toBe("token exhausted");
+  expect(decision).toBeTruthy();
+  expect(decision?.state).toBe("exhausted");
+  expect(decision?.presence.status).toBe("dnd");
+  expect(decision?.presence.activities[0]?.state).toBe("token exhausted");
 }
 
 describe("discord auto presence", () => {
@@ -89,10 +87,8 @@ describe("discord auto presence", () => {
     controller.runNow();
 
     expect(updatePresence).toHaveBeenCalledTimes(2);
-    expect(updatePresence.mock.calls).toEqual([
-      [expect.objectContaining({ status: "dnd" })],
-      [expect.objectContaining({ status: "online" })],
-    ]);
+    expect(updatePresence.mock.calls[0]?.[0]?.status).toBe("dnd");
+    expect(updatePresence.mock.calls[1]?.[0]?.status).toBe("online");
   });
 
   it("re-applies presence on refresh even when signature is unchanged", () => {
@@ -123,10 +119,8 @@ describe("discord auto presence", () => {
     controller.refresh();
 
     expect(updatePresence).toHaveBeenCalledTimes(2);
-    expect(updatePresence.mock.calls).toEqual([
-      [expect.objectContaining({ status: "online" })],
-      [expect.objectContaining({ status: "online" })],
-    ]);
+    expect(updatePresence.mock.calls[0]?.[0]?.status).toBe("online");
+    expect(updatePresence.mock.calls[1]?.[0]?.status).toBe("online");
   });
 
   it("does nothing when auto presence is disabled", () => {

@@ -35,8 +35,8 @@ vi.mock("../runtime.js", () => ({
   defaultRuntime: runtime,
 }));
 
-let registerQrCli: typeof import("./qr-cli.js").registerQrCli;
-let registerMaintenanceCommands: typeof import("./program/register.maintenance.js").registerMaintenanceCommands;
+const { registerQrCli } = await import("./qr-cli.js");
+const { registerMaintenanceCommands } = await import("./program/register.maintenance.js");
 
 function createGatewayTokenRefFixture() {
   return {
@@ -69,6 +69,8 @@ function createGatewayTokenRefFixture() {
 function decodeSetupCode(setupCode: string): {
   url?: string;
   bootstrapToken?: string;
+  token?: string;
+  password?: string;
 } {
   const padded = setupCode.replace(/-/g, "+").replace(/_/g, "/");
   const padLength = (4 - (padded.length % 4)) % 4;
@@ -77,6 +79,8 @@ function decodeSetupCode(setupCode: string): {
   return JSON.parse(json) as {
     url?: string;
     bootstrapToken?: string;
+    token?: string;
+    password?: string;
   };
 }
 
@@ -85,26 +89,6 @@ async function runCli(args: string[]): Promise<void> {
   registerQrCli(program);
   registerMaintenanceCommands(program);
   await program.parseAsync(args, { from: "user" });
-}
-
-const mockedModuleIds = ["../config/config.js", "../infra/clipboard.js", "../runtime.js"];
-
-const unmockedDependencyIds = [
-  "../commands/dashboard.js",
-  "../gateway/resolve-configured-secret-input-string.js",
-  "../pairing/setup-code.js",
-  "./command-secret-gateway.js",
-  "./program/register.maintenance.js",
-  "./qr-cli.js",
-];
-
-async function loadCliModules() {
-  vi.resetModules();
-  for (const id of unmockedDependencyIds) {
-    vi.doUnmock(id);
-  }
-  ({ registerQrCli } = await import("./qr-cli.js"));
-  ({ registerMaintenanceCommands } = await import("./program/register.maintenance.js"));
 }
 
 describe("cli integration: qr + dashboard token SecretRef", () => {
@@ -120,20 +104,8 @@ describe("cli integration: qr + dashboard token SecretRef", () => {
     ]);
   });
 
-  beforeAll(async () => {
-    await loadCliModules();
-  });
-
   afterAll(() => {
     envSnapshot.restore();
-    vi.restoreAllMocks();
-    for (const id of mockedModuleIds) {
-      vi.doUnmock(id);
-    }
-    for (const id of unmockedDependencyIds) {
-      vi.doUnmock(id);
-    }
-    vi.resetModules();
   });
 
   beforeEach(() => {
@@ -147,7 +119,7 @@ describe("cli integration: qr + dashboard token SecretRef", () => {
     delete process.env.SHARED_GATEWAY_TOKEN;
   });
 
-  it("uses the same resolved token SecretRef for qr auth validation and dashboard commands", async () => {
+  it("uses the same resolved token SecretRef for both qr and dashboard commands", async () => {
     const fixture = createGatewayTokenRefFixture();
     process.env.SHARED_GATEWAY_TOKEN = "shared-token-123";
     loadConfigMock.mockReturnValue(fixture);
@@ -165,6 +137,7 @@ describe("cli integration: qr + dashboard token SecretRef", () => {
     const payload = decodeSetupCode(setupCode ?? "");
     expect(payload.url).toBe("ws://gateway.local:18789");
     expect(payload.bootstrapToken).toBeTruthy();
+    expect(payload.token).toBeUndefined();
     expect(runtimeErrors).toEqual([]);
 
     runtimeLogs.length = 0;
@@ -191,9 +164,7 @@ describe("cli integration: qr + dashboard token SecretRef", () => {
       config: fixture,
     });
 
-    await expect(runCli(["qr", "--setup-code-only"])).rejects.toThrow(
-      /(__exit__:1|process\.exit unexpectedly called with "?1"?)/,
-    );
+    await expect(runCli(["qr", "--setup-code-only"])).rejects.toThrow("__exit__:1");
     expect(runtimeErrors.join("\n")).toMatch(/SHARED_GATEWAY_TOKEN/);
 
     runtimeLogs.length = 0;

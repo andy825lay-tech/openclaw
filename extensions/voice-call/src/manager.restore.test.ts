@@ -8,16 +8,6 @@ import {
   writeCallsToStore,
 } from "./manager.test-harness.js";
 
-function requireSingleActiveCall(manager: CallManager) {
-  const activeCalls = manager.getActiveCalls();
-  expect(activeCalls).toHaveLength(1);
-  const activeCall = activeCalls[0];
-  if (!activeCall) {
-    throw new Error("expected restored active call");
-  }
-  return activeCall;
-}
-
 describe("CallManager verification on restore", () => {
   async function initializeManager(params?: {
     callOverrides?: Parameters<typeof makePersistedCall>[0];
@@ -60,18 +50,16 @@ describe("CallManager verification on restore", () => {
       providerResult: { status: "in-progress", isTerminal: false },
     });
 
-    const activeCall = requireSingleActiveCall(manager);
-    expect(activeCall.callId).toBe(call.callId);
+    expect(manager.getActiveCalls()).toHaveLength(1);
+    expect(manager.getActiveCalls()[0]?.callId).toBe(call.callId);
   });
 
   it("keeps calls when provider returns unknown (transient error)", async () => {
-    const { call, manager } = await initializeManager({
+    const { manager } = await initializeManager({
       providerResult: { status: "error", isTerminal: false, isUnknown: true },
     });
 
-    const activeCall = requireSingleActiveCall(manager);
-    expect(activeCall.callId).toBe(call.callId);
-    expect(activeCall.state).toBe(call.state);
+    expect(manager.getActiveCalls()).toHaveLength(1);
   });
 
   it("skips calls older than maxDurationSeconds", async () => {
@@ -95,7 +83,7 @@ describe("CallManager verification on restore", () => {
   });
 
   it("keeps call when getCallStatus throws (verification failure)", async () => {
-    const { call, manager } = await initializeManager({
+    const { manager } = await initializeManager({
       configureProvider: (provider) => {
         provider.getCallStatus = async () => {
           throw new Error("network failure");
@@ -103,8 +91,6 @@ describe("CallManager verification on restore", () => {
       },
     });
 
-    const activeCall = requireSingleActiveCall(manager);
-    expect(activeCall.callId).toBe(call.callId);
-    expect(activeCall.state).toBe(call.state);
+    expect(manager.getActiveCalls()).toHaveLength(1);
   });
 });

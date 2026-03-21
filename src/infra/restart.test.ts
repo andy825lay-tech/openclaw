@@ -16,31 +16,25 @@ vi.mock("../config/paths.js", () => ({
   resolveGatewayPort: (...args: unknown[]) => resolveGatewayPortMock(...args),
 }));
 
-import {
-  __testing,
-  cleanStaleGatewayProcessesSync,
-  findGatewayPidsOnPortSync,
-} from "./restart-stale-pids.js";
+let __testing: typeof import("./restart-stale-pids.js").__testing;
+let cleanStaleGatewayProcessesSync: typeof import("./restart-stale-pids.js").cleanStaleGatewayProcessesSync;
+let findGatewayPidsOnPortSync: typeof import("./restart-stale-pids.js").findGatewayPidsOnPortSync;
 
-let currentTimeMs = 0;
-
-beforeEach(() => {
+beforeEach(async () => {
+  vi.resetModules();
+  ({ __testing, cleanStaleGatewayProcessesSync, findGatewayPidsOnPortSync } =
+    await import("./restart-stale-pids.js"));
   spawnSyncMock.mockReset();
   resolveLsofCommandSyncMock.mockReset();
   resolveGatewayPortMock.mockReset();
 
-  currentTimeMs = 0;
   resolveLsofCommandSyncMock.mockReturnValue("/usr/sbin/lsof");
   resolveGatewayPortMock.mockReturnValue(18789);
-  __testing.setSleepSyncOverride((ms) => {
-    currentTimeMs += ms;
-  });
-  __testing.setDateNowOverride(() => currentTimeMs);
+  __testing.setSleepSyncOverride(() => {});
 });
 
 afterEach(() => {
   __testing.setSleepSyncOverride(null);
-  __testing.setDateNowOverride(null);
   vi.restoreAllMocks();
 });
 
@@ -85,17 +79,11 @@ describe.runIf(process.platform !== "win32")("findGatewayPidsOnPortSync", () => 
 
 describe.runIf(process.platform !== "win32")("cleanStaleGatewayProcessesSync", () => {
   it("kills stale gateway pids discovered on the gateway port", () => {
-    spawnSyncMock
-      .mockReturnValueOnce({
-        error: undefined,
-        status: 0,
-        stdout: ["p6001", "copenclaw", "p6002", "copenclaw-gateway"].join("\n"),
-      })
-      .mockReturnValue({
-        error: undefined,
-        status: 1,
-        stdout: "",
-      });
+    spawnSyncMock.mockReturnValue({
+      error: undefined,
+      status: 0,
+      stdout: ["p6001", "copenclaw", "p6002", "copenclaw-gateway"].join("\n"),
+    });
     const killSpy = vi.spyOn(process, "kill").mockImplementation(() => true);
 
     const killed = cleanStaleGatewayProcessesSync();
@@ -109,17 +97,11 @@ describe.runIf(process.platform !== "win32")("cleanStaleGatewayProcessesSync", (
   });
 
   it("uses explicit port override when provided", () => {
-    spawnSyncMock
-      .mockReturnValueOnce({
-        error: undefined,
-        status: 0,
-        stdout: ["p7001", "copenclaw"].join("\n"),
-      })
-      .mockReturnValue({
-        error: undefined,
-        status: 1,
-        stdout: "",
-      });
+    spawnSyncMock.mockReturnValue({
+      error: undefined,
+      status: 0,
+      stdout: ["p7001", "copenclaw"].join("\n"),
+    });
     const killSpy = vi.spyOn(process, "kill").mockImplementation(() => true);
 
     const killed = cleanStaleGatewayProcessesSync(19999);

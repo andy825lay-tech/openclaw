@@ -12,7 +12,7 @@ vi.mock("./manifest-registry.js", () => ({
 }));
 
 let resolveOwningPluginIdsForProvider: typeof import("./providers.js").resolveOwningPluginIdsForProvider;
-let resolvePluginProviders: typeof import("./providers.runtime.js").resolvePluginProviders;
+let resolvePluginProviders: typeof import("./providers.js").resolvePluginProviders;
 
 describe("resolvePluginProviders", () => {
   beforeEach(async () => {
@@ -32,8 +32,8 @@ describe("resolvePluginProviders", () => {
       ],
       diagnostics: [],
     });
-    ({ resolveOwningPluginIdsForProvider } = await import("./providers.js"));
-    ({ resolvePluginProviders } = await import("./providers.runtime.js"));
+    ({ resolveOwningPluginIdsForProvider, resolvePluginProviders } =
+      await import("./providers.js"));
   });
 
   it("forwards an explicit env to plugin loading", () => {

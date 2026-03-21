@@ -319,7 +319,7 @@ describe("session history HTTP endpoints", () => {
           }
         ).message?.__openclaw,
       ).toMatchObject({
-        id: appended.ok ? appended.messageId : undefined,
+        id: appended.messageId,
         seq: 2,
       });
 

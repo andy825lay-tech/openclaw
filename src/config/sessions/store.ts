@@ -5,7 +5,7 @@ import type { MsgContext } from "../../auto-reply/templating.js";
 import {
   archiveSessionTranscripts,
   cleanupArchivedSessionTranscripts,
-} from "../../gateway/session-archive.fs.js";
+} from "../../gateway/session-utils.fs.js";
 import { writeTextAtomic } from "../../infra/json-files.js";
 import { createSubsystemLogger } from "../../logging/subsystem.js";
 import {
@@ -15,14 +15,13 @@ import {
   normalizeSessionDeliveryFields,
   type DeliveryContext,
 } from "../../utils/delivery-context.js";
-import { getFileStatSnapshot } from "../cache-utils.js";
+import { getFileStatSnapshot, isCacheEnabled, resolveCacheTtlMs } from "../cache-utils.js";
 import { enforceSessionDiskBudget, type SessionDiskBudgetSweepResult } from "./disk-budget.js";
 import { deriveSessionMetaPatch } from "./metadata.js";
 import {
   clearSessionStoreCaches,
   dropSessionStoreObjectCache,
   getSerializedSessionStore,
-  isSessionStoreCacheEnabled,
   readSessionStoreCache,
   setSerializedSessionStore,
   writeSessionStoreCache,
@@ -46,8 +45,25 @@ import {
 
 const log = createSubsystemLogger("sessions/store");
 
+// ============================================================================
+// Session Store Cache with TTL Support
+// ============================================================================
+
+const DEFAULT_SESSION_STORE_TTL_MS = 45_000; // 45 seconds (between 30-60s)
+
 function isSessionStoreRecord(value: unknown): value is Record<string, SessionEntry> {
   return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function getSessionStoreTtl(): number {
+  return resolveCacheTtlMs({
+    envValue: process.env.OPENCLAW_SESSION_CACHE_TTL_MS,
+    defaultTtlMs: DEFAULT_SESSION_STORE_TTL_MS,
+  });
+}
+
+function isSessionStoreCacheEnabled(): boolean {
+  return isCacheEnabled(getSessionStoreTtl());
 }
 
 function normalizeSessionEntryDelivery(entry: SessionEntry): SessionEntry {
@@ -185,6 +201,7 @@ export function loadSessionStore(
     const currentFileStat = getFileStatSnapshot(storePath);
     const cached = readSessionStoreCache({
       storePath,
+      ttlMs: getSessionStoreTtl(),
       mtimeMs: currentFileStat?.mtimeMs,
       sizeBytes: currentFileStat?.sizeBytes,
     });

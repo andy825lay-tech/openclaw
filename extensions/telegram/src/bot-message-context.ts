@@ -1,10 +1,10 @@
 import { resolveAckReaction } from "openclaw/plugin-sdk/agent-runtime";
+import { shouldAckReaction as shouldAckReactionGate } from "openclaw/plugin-sdk/channel-runtime";
+import { logInboundDrop } from "openclaw/plugin-sdk/channel-runtime";
 import {
   createStatusReactionController,
-  shouldAckReaction as shouldAckReactionGate,
   type StatusReactionController,
-} from "openclaw/plugin-sdk/channel-feedback";
-import { logInboundDrop } from "openclaw/plugin-sdk/channel-inbound";
+} from "openclaw/plugin-sdk/channel-runtime";
 import { loadConfig } from "openclaw/plugin-sdk/config-runtime";
 import type { TelegramDirectConfig, TelegramGroupConfig } from "openclaw/plugin-sdk/config-runtime";
 import { ensureConfiguredBindingRouteReady } from "openclaw/plugin-sdk/conversation-runtime";
@@ -55,8 +55,6 @@ export const buildTelegramMessageContext = async ({
   resolveGroupActivation,
   resolveGroupRequireMention,
   resolveTelegramGroupConfig,
-  loadFreshConfig,
-  upsertPairingRequest,
   sendChatActionHandler,
 }: BuildTelegramMessageContextParams) => {
   const msg = primaryCtx.message;
@@ -81,7 +79,7 @@ export const buildTelegramMessageContext = async ({
       ? (groupConfig.dmPolicy ?? dmPolicy)
       : dmPolicy;
   // Fresh config for bindings lookup; other routing inputs are payload-derived.
-  const freshCfg = (loadFreshConfig ?? loadConfig)();
+  const freshCfg = loadConfig();
   let { route, configuredBinding, configuredBindingSessionKey } = resolveTelegramConversationRoute({
     cfg: freshCfg,
     accountId: account.accountId,
@@ -195,7 +193,6 @@ export const buildTelegramMessageContext = async ({
       accountId: account.accountId,
       bot,
       logger,
-      upsertPairingRequest,
     }))
   ) {
     return null;
@@ -442,7 +439,6 @@ export const buildTelegramMessageContext = async ({
     msg,
     chatId,
     isGroup,
-    groupConfig,
     resolvedThreadId,
     threadSpec,
     replyThreadId,

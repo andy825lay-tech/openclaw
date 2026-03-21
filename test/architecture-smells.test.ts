@@ -1,26 +1,10 @@
+import { execFileSync } from "node:child_process";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { collectArchitectureSmells, main } from "../scripts/check-architecture-smells.mjs";
+import { collectArchitectureSmells } from "../scripts/check-architecture-smells.mjs";
 
-function createCapturedIo() {
-  let stdout = "";
-  let stderr = "";
-  return {
-    io: {
-      stdout: {
-        write(chunk) {
-          stdout += String(chunk);
-        },
-      },
-      stderr: {
-        write(chunk) {
-          stderr += String(chunk);
-        },
-      },
-    },
-    readStdout: () => stdout,
-    readStderr: () => stderr,
-  };
-}
+const repoRoot = process.cwd();
+const scriptPath = path.join(repoRoot, "scripts", "check-architecture-smells.mjs");
 
 describe("architecture smell inventory", () => {
   it("produces stable sorted output", async () => {
@@ -42,11 +26,11 @@ describe("architecture smell inventory", () => {
   });
 
   it("script json output matches the collector", async () => {
-    const captured = createCapturedIo();
-    const exitCode = await main(["--json"], captured.io);
+    const stdout = execFileSync(process.execPath, [scriptPath, "--json"], {
+      cwd: repoRoot,
+      encoding: "utf8",
+    });
 
-    expect(exitCode).toBe(0);
-    expect(captured.readStderr()).toBe("");
-    expect(JSON.parse(captured.readStdout())).toEqual(await collectArchitectureSmells());
+    expect(JSON.parse(stdout)).toEqual(await collectArchitectureSmells());
   });
 });

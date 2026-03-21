@@ -8,7 +8,6 @@ import { escapeRegExp, formatEnvelopeTimestamp } from "../../../test/helpers/env
 import { withEnvAsync } from "../../../test/helpers/extensions/env.js";
 import {
   createMockWebListener,
-  createScriptedWebListenerFactory,
   createWebListenerFactoryCapture,
   installWebAutoReplyTestHomeHooks,
   installWebAutoReplyUnitTestHooks,
@@ -113,32 +112,38 @@ describe("web auto-reply connection", () => {
         expectedError: "max attempts reached",
       },
     ]) {
+      const closeResolvers: Array<() => void> = [];
       const sleep = vi.fn(async () => {});
-      const scripted = createScriptedWebListenerFactory();
+      const listenerFactory = vi.fn(async () => {
+        const onClose = new Promise<void>((res) => {
+          closeResolvers.push(res);
+        });
+        return { close: vi.fn(), onClose };
+      });
       const { runtime, controller, run } = startMonitorWebChannel({
         monitorWebChannelFn: monitorWebChannel as never,
-        listenerFactory: scripted.listenerFactory,
+        listenerFactory,
         sleep,
         reconnect: scenario.reconnect,
       });
 
       await Promise.resolve();
-      expect(scripted.getListenerCount()).toBe(1);
+      expect(listenerFactory).toHaveBeenCalledTimes(1);
 
-      scripted.resolveClose(0);
+      closeResolvers.shift()?.();
       await vi.waitFor(
         () => {
-          expect(scripted.getListenerCount()).toBe(scenario.expectedCallsAfterFirstClose);
+          expect(listenerFactory).toHaveBeenCalledTimes(scenario.expectedCallsAfterFirstClose);
         },
         { timeout: 250, interval: 2 },
       );
 
       if (scenario.closeTwiceAndFinish) {
-        scripted.resolveClose(1);
+        closeResolvers.shift()?.();
         await run;
       } else {
         controller.abort();
-        scripted.resolveClose(1);
+        closeResolvers.shift()?.();
         await Promise.resolve();
         await run;
       }
@@ -148,18 +153,24 @@ describe("web auto-reply connection", () => {
   });
 
   it("treats status 440 as non-retryable and stops without retrying", async () => {
+    const closeResolvers: Array<(reason?: unknown) => void> = [];
     const sleep = vi.fn(async () => {});
-    const scripted = createScriptedWebListenerFactory();
+    const listenerFactory = vi.fn(async () => {
+      const onClose = new Promise<unknown>((res) => {
+        closeResolvers.push(res);
+      });
+      return { close: vi.fn(), onClose };
+    });
     const { runtime, controller, run } = startMonitorWebChannel({
       monitorWebChannelFn: monitorWebChannel as never,
-      listenerFactory: scripted.listenerFactory,
+      listenerFactory,
       sleep,
       reconnect: { initialMs: 10, maxMs: 10, maxAttempts: 3, factor: 1.1 },
     });
 
     await Promise.resolve();
-    expect(scripted.getListenerCount()).toBe(1);
-    scripted.resolveClose(0, {
+    expect(listenerFactory).toHaveBeenCalledTimes(1);
+    closeResolvers.shift()?.({
       status: 440,
       isLoggedOut: false,
       error: "Unknown Stream Errored (conflict)",
@@ -173,17 +184,17 @@ describe("web auto-reply connection", () => {
     if (!completedQuickly) {
       await vi.waitFor(
         () => {
-          expect(scripted.getListenerCount()).toBeGreaterThanOrEqual(2);
+          expect(listenerFactory).toHaveBeenCalledTimes(2);
         },
         { timeout: 250, interval: 2 },
       );
       controller.abort();
-      scripted.resolveClose(1, { status: 499, isLoggedOut: false, error: "aborted" });
+      closeResolvers[1]?.({ status: 499, isLoggedOut: false, error: "aborted" });
       await run;
     }
 
     expect(completedQuickly).toBe(true);
-    expect(scripted.getListenerCount()).toBe(1);
+    expect(listenerFactory).toHaveBeenCalledTimes(1);
     expect(sleep).not.toHaveBeenCalled();
     expect(runtime.error).toHaveBeenCalledWith(expect.stringContaining("status 440"));
     expect(runtime.error).toHaveBeenCalledWith(expect.stringContaining("session conflict"));
@@ -194,10 +205,30 @@ describe("web auto-reply connection", () => {
     vi.useFakeTimers();
     try {
       const sleep = vi.fn(async () => {});
-      const scripted = createScriptedWebListenerFactory();
+      const closeResolvers: Array<(reason: unknown) => void> = [];
+      let capturedOnMessage:
+        | ((msg: import("./inbound.js").WebInboundMessage) => Promise<void>)
+        | undefined;
+      const listenerFactory = vi.fn(
+        async (opts: {
+          onMessage: (msg: import("./inbound.js").WebInboundMessage) => Promise<void>;
+        }) => {
+          capturedOnMessage = opts.onMessage;
+          let resolveClose: (reason: unknown) => void = () => {};
+          const onClose = new Promise<unknown>((res) => {
+            resolveClose = res;
+            closeResolvers.push(res);
+          });
+          return {
+            close: vi.fn(),
+            onClose,
+            signalClose: (reason?: unknown) => resolveClose(reason),
+          };
+        },
+      );
       const { controller, run } = startMonitorWebChannel({
         monitorWebChannelFn: monitorWebChannel as never,
-        listenerFactory: scripted.listenerFactory,
+        listenerFactory,
         sleep,
         heartbeatSeconds: 60,
         messageTimeoutMs: 30,
@@ -205,10 +236,10 @@ describe("web auto-reply connection", () => {
       });
 
       await Promise.resolve();
-      expect(scripted.getListenerCount()).toBe(1);
+      expect(listenerFactory).toHaveBeenCalledTimes(1);
       await vi.waitFor(
         () => {
-          expect(scripted.getOnMessage()).toBeTypeOf("function");
+          expect(capturedOnMessage).toBeTypeOf("function");
         },
         { timeout: 250, interval: 2 },
       );
@@ -217,7 +248,7 @@ describe("web auto-reply connection", () => {
       const sendComposing = vi.fn();
       const sendMedia = vi.fn();
 
-      void scripted.getOnMessage()?.(
+      void capturedOnMessage?.(
         makeInboundMessage({
           body: "hi",
           from: "+1",
@@ -233,83 +264,13 @@ describe("web auto-reply connection", () => {
       await Promise.resolve();
       await vi.waitFor(
         () => {
-          expect(scripted.getListenerCount()).toBeGreaterThanOrEqual(2);
+          expect(listenerFactory).toHaveBeenCalledTimes(2);
         },
         { timeout: 250, interval: 2 },
       );
 
       controller.abort();
-      scripted.resolveClose(1, { status: 499, isLoggedOut: false });
-      await Promise.resolve();
-      await run;
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("keeps watchdog message age across reconnects", async () => {
-    vi.useFakeTimers();
-    try {
-      const sleep = vi.fn(async () => {});
-      const scripted = createScriptedWebListenerFactory();
-      const { controller, run } = startMonitorWebChannel({
-        monitorWebChannelFn: monitorWebChannel as never,
-        listenerFactory: scripted.listenerFactory,
-        sleep,
-        heartbeatSeconds: 60,
-        messageTimeoutMs: 30,
-        watchdogCheckMs: 5,
-      });
-
-      await Promise.resolve();
-      expect(scripted.getListenerCount()).toBe(1);
-      await vi.waitFor(
-        () => {
-          expect(scripted.getOnMessage()).toBeTypeOf("function");
-        },
-        { timeout: 250, interval: 2 },
-      );
-
-      const reply = vi.fn().mockResolvedValue(undefined);
-      const sendComposing = vi.fn();
-      const sendMedia = vi.fn();
-
-      void scripted.getOnMessage()?.(
-        makeInboundMessage({
-          body: "hi",
-          from: "+1",
-          to: "+2",
-          id: "m1",
-          sendComposing,
-          reply,
-          sendMedia,
-        }),
-      );
-      await Promise.resolve();
-
-      scripted.resolveClose(0, { status: 499, isLoggedOut: false, error: "first-close" });
-      await vi.waitFor(
-        () => {
-          expect(scripted.getListenerCount()).toBe(2);
-        },
-        { timeout: 250, interval: 2 },
-      );
-
-      await vi.advanceTimersByTimeAsync(200);
-      await Promise.resolve();
-      await vi.waitFor(
-        () => {
-          expect(scripted.getListenerCount()).toBeGreaterThanOrEqual(3);
-        },
-        { timeout: 250, interval: 2 },
-      );
-
-      controller.abort();
-      scripted.resolveClose(scripted.getListenerCount() - 1, {
-        status: 499,
-        isLoggedOut: false,
-        error: "aborted",
-      });
+      closeResolvers[1]?.({ status: 499, isLoggedOut: false });
       await Promise.resolve();
       await run;
     } finally {

@@ -1,12 +1,13 @@
-import { resolveInboundDebounceMs } from "openclaw/plugin-sdk/channel-inbound";
 import { formatCliCommand } from "openclaw/plugin-sdk/cli-runtime";
 import { waitForever } from "openclaw/plugin-sdk/cli-runtime";
-import { hasControlCommand } from "openclaw/plugin-sdk/command-auth";
 import { loadConfig } from "openclaw/plugin-sdk/config-runtime";
+import { createConnectedChannelStatusPatch } from "openclaw/plugin-sdk/gateway-runtime";
 import { formatDurationPrecise } from "openclaw/plugin-sdk/infra-runtime";
 import { enqueueSystemEvent } from "openclaw/plugin-sdk/infra-runtime";
-import { DEFAULT_GROUP_HISTORY_LIMIT } from "openclaw/plugin-sdk/reply-history";
+import { hasControlCommand } from "openclaw/plugin-sdk/reply-runtime";
+import { resolveInboundDebounceMs } from "openclaw/plugin-sdk/reply-runtime";
 import { getReplyFromConfig } from "openclaw/plugin-sdk/reply-runtime";
+import { DEFAULT_GROUP_HISTORY_LIMIT } from "openclaw/plugin-sdk/reply-runtime";
 import { resolveAgentRoute } from "openclaw/plugin-sdk/routing";
 import { logVerbose } from "openclaw/plugin-sdk/runtime-env";
 import { registerUnhandledRejectionHandler } from "openclaw/plugin-sdk/runtime-env";
@@ -25,40 +26,15 @@ import {
 import { formatError, getWebAuthAgeMs, readWebSelfId } from "../session.js";
 import { whatsappHeartbeatLog, whatsappLog } from "./loggers.js";
 import { buildMentionConfig } from "./mentions.js";
-import { createWebChannelStatusController } from "./monitor-state.js";
 import { createEchoTracker } from "./monitor/echo.js";
 import { createWebOnMessageHandler } from "./monitor/on-message.js";
-import type { WebInboundMsg, WebMonitorTuning } from "./types.js";
+import type { WebChannelStatus, WebInboundMsg, WebMonitorTuning } from "./types.js";
 import { isLikelyWhatsAppCryptoError } from "./util.js";
 
 function isNonRetryableWebCloseStatus(statusCode: unknown): boolean {
   // WhatsApp 440 = session conflict ("Unknown Stream Errored (conflict)").
   // This is persistent until the operator resolves the conflicting session.
   return statusCode === 440;
-}
-
-type ActiveConnectionRun = {
-  connectionId: string;
-  startedAt: number;
-  heartbeat: NodeJS.Timeout | null;
-  watchdogTimer: NodeJS.Timeout | null;
-  lastInboundAt: number | null;
-  handledMessages: number;
-  unregisterUnhandled: (() => void) | null;
-  backgroundTasks: Set<Promise<unknown>>;
-};
-
-function createActiveConnectionRun(lastInboundAt: number | null): ActiveConnectionRun {
-  return {
-    connectionId: newConnectionId(),
-    startedAt: Date.now(),
-    heartbeat: null,
-    watchdogTimer: null,
-    lastInboundAt,
-    handledMessages: 0,
-    unregisterUnhandled: null,
-    backgroundTasks: new Set<Promise<unknown>>(),
-  };
 }
 
 export async function monitorWebChannel(
@@ -74,9 +50,23 @@ export async function monitorWebChannel(
   const replyLogger = getChildLogger({ module: "web-auto-reply", runId });
   const heartbeatLogger = getChildLogger({ module: "web-heartbeat", runId });
   const reconnectLogger = getChildLogger({ module: "web-reconnect", runId });
-  const statusController = createWebChannelStatusController(tuning.statusSink);
-  const status = statusController.snapshot();
-  statusController.emit();
+  const status: WebChannelStatus = {
+    running: true,
+    connected: false,
+    reconnectAttempts: 0,
+    lastConnectedAt: null,
+    lastDisconnect: null,
+    lastMessageAt: null,
+    lastEventAt: null,
+    lastError: null,
+  };
+  const emitStatus = () => {
+    tuning.statusSink?.({
+      ...status,
+      lastDisconnect: status.lastDisconnect ? { ...status.lastDisconnect } : null,
+    });
+  };
+  emitStatus();
 
   const baseCfg = loadConfig();
   const account = resolveWhatsAppAccount({
@@ -157,23 +147,31 @@ export async function monitorWebChannel(
       break;
     }
 
-    const active = createActiveConnectionRun(status.lastInboundAt ?? status.lastMessageAt ?? null);
+    const connectionId = newConnectionId();
+    const startedAt = Date.now();
+    let heartbeat: NodeJS.Timeout | null = null;
+    let watchdogTimer: NodeJS.Timeout | null = null;
+    let lastMessageAt: number | null = null;
+    let handledMessages = 0;
+    let _lastInboundMsg: WebInboundMsg | null = null;
+    let unregisterUnhandled: (() => void) | null = null;
 
     // Watchdog to detect stuck message processing (e.g., event emitter died).
     // Tuning overrides are test-oriented; production defaults remain unchanged.
     const MESSAGE_TIMEOUT_MS = tuning.messageTimeoutMs ?? 30 * 60 * 1000; // 30m default
     const WATCHDOG_CHECK_MS = tuning.watchdogCheckMs ?? 60 * 1000; // 1m default
 
+    const backgroundTasks = new Set<Promise<unknown>>();
     const onMessage = createWebOnMessageHandler({
       cfg,
       verbose,
-      connectionId: active.connectionId,
+      connectionId,
       maxMediaBytes,
       groupHistoryLimit,
       groupHistories,
       groupMemberNames,
       echoTracker,
-      backgroundTasks: active.backgroundTasks,
+      backgroundTasks,
       replyResolver: replyResolver ?? getReplyFromConfig,
       replyLogger,
       baseMentionConfig,
@@ -203,14 +201,19 @@ export async function monitorWebChannel(
       debounceMs: inboundDebounceMs,
       shouldDebounce,
       onMessage: async (msg: WebInboundMsg) => {
-        active.handledMessages += 1;
-        active.lastInboundAt = Date.now();
-        statusController.noteInbound(active.lastInboundAt);
+        handledMessages += 1;
+        lastMessageAt = Date.now();
+        status.lastMessageAt = lastMessageAt;
+        status.lastEventAt = lastMessageAt;
+        emitStatus();
+        _lastInboundMsg = msg;
         await onMessage(msg);
       },
     });
 
-    statusController.noteConnected();
+    Object.assign(status, createConnectedChannelStatusPatch());
+    status.lastError = null;
+    emitStatus();
 
     // Surface a concise connection event for the next main-session turn/heartbeat.
     const { e164: selfE164 } = readWebSelfId(account.authDir);
@@ -224,13 +227,13 @@ export async function monitorWebChannel(
     });
 
     setActiveWebListener(account.accountId, listener);
-    active.unregisterUnhandled = registerUnhandledRejectionHandler((reason) => {
+    unregisterUnhandled = registerUnhandledRejectionHandler((reason) => {
       if (!isLikelyWhatsAppCryptoError(reason)) {
         return false;
       }
       const errorStr = formatError(reason);
       reconnectLogger.warn(
-        { connectionId: active.connectionId, error: errorStr },
+        { connectionId, error: errorStr },
         "web reconnect: unhandled rejection from WhatsApp socket; forcing reconnect",
       );
       listener.signalClose?.({
@@ -243,19 +246,19 @@ export async function monitorWebChannel(
 
     const closeListener = async () => {
       setActiveWebListener(account.accountId, null);
-      if (active.unregisterUnhandled) {
-        active.unregisterUnhandled();
-        active.unregisterUnhandled = null;
+      if (unregisterUnhandled) {
+        unregisterUnhandled();
+        unregisterUnhandled = null;
       }
-      if (active.heartbeat) {
-        clearInterval(active.heartbeat);
+      if (heartbeat) {
+        clearInterval(heartbeat);
       }
-      if (active.watchdogTimer) {
-        clearInterval(active.watchdogTimer);
+      if (watchdogTimer) {
+        clearInterval(watchdogTimer);
       }
-      if (active.backgroundTasks.size > 0) {
-        await Promise.allSettled(active.backgroundTasks);
-        active.backgroundTasks.clear();
+      if (backgroundTasks.size > 0) {
+        await Promise.allSettled(backgroundTasks);
+        backgroundTasks.clear();
       }
       try {
         await listener.close();
@@ -265,19 +268,19 @@ export async function monitorWebChannel(
     };
 
     if (keepAlive) {
-      active.heartbeat = setInterval(() => {
+      heartbeat = setInterval(() => {
         const authAgeMs = getWebAuthAgeMs(account.authDir);
-        const minutesSinceLastMessage = active.lastInboundAt
-          ? Math.floor((Date.now() - active.lastInboundAt) / 60000)
+        const minutesSinceLastMessage = lastMessageAt
+          ? Math.floor((Date.now() - lastMessageAt) / 60000)
           : null;
 
         const logData = {
-          connectionId: active.connectionId,
+          connectionId,
           reconnectAttempts,
-          messagesHandled: active.handledMessages,
-          lastInboundAt: active.lastInboundAt,
+          messagesHandled: handledMessages,
+          lastMessageAt,
           authAgeMs,
-          uptimeMs: Date.now() - active.startedAt,
+          uptimeMs: Date.now() - startedAt,
           ...(minutesSinceLastMessage !== null && minutesSinceLastMessage > 30
             ? { minutesSinceLastMessage }
             : {}),
@@ -290,22 +293,21 @@ export async function monitorWebChannel(
         }
       }, heartbeatSeconds * 1000);
 
-      active.watchdogTimer = setInterval(() => {
-        if (!active.lastInboundAt) {
+      watchdogTimer = setInterval(() => {
+        if (!lastMessageAt) {
           return;
         }
-        const timeSinceLastMessage = Date.now() - active.lastInboundAt;
+        const timeSinceLastMessage = Date.now() - lastMessageAt;
         if (timeSinceLastMessage <= MESSAGE_TIMEOUT_MS) {
           return;
         }
         const minutesSinceLastMessage = Math.floor(timeSinceLastMessage / 60000);
-        statusController.noteWatchdogStale();
         heartbeatLogger.warn(
           {
-            connectionId: active.connectionId,
+            connectionId,
             minutesSinceLastMessage,
-            lastInboundAt: new Date(active.lastInboundAt),
-            messagesHandled: active.handledMessages,
+            lastMessageAt: new Date(lastMessageAt),
+            messagesHandled: handledMessages,
           },
           "Message timeout detected - forcing reconnect",
         );
@@ -342,11 +344,12 @@ export async function monitorWebChannel(
       abortPromise ?? waitForever(),
     ]);
 
-    const uptimeMs = Date.now() - active.startedAt;
+    const uptimeMs = Date.now() - startedAt;
     if (uptimeMs > heartbeatSeconds * 1000) {
       reconnectAttempts = 0; // Healthy stretch; reset the backoff.
     }
-    statusController.noteReconnectAttempts(reconnectAttempts);
+    status.reconnectAttempts = reconnectAttempts;
+    emitStatus();
 
     if (stopRequested() || sigintStop || reason === "aborted") {
       await closeListener();
@@ -364,11 +367,21 @@ export async function monitorWebChannel(
       (reason as { isLoggedOut?: boolean }).isLoggedOut;
 
     const errorStr = formatError(reason);
-    const numericStatusCode = typeof statusCode === "number" ? statusCode : undefined;
+    status.connected = false;
+    status.lastEventAt = Date.now();
+    status.lastDisconnect = {
+      at: status.lastEventAt,
+      status: typeof statusCode === "number" ? statusCode : undefined,
+      error: errorStr,
+      loggedOut: Boolean(loggedOut),
+    };
+    status.lastError = errorStr;
+    status.reconnectAttempts = reconnectAttempts;
+    emitStatus();
 
     reconnectLogger.info(
       {
-        connectionId: active.connectionId,
+        connectionId,
         status: statusCode,
         loggedOut,
         reconnectAttempts,
@@ -382,13 +395,6 @@ export async function monitorWebChannel(
     });
 
     if (loggedOut) {
-      statusController.noteClose({
-        statusCode: numericStatusCode,
-        loggedOut: true,
-        error: errorStr,
-        reconnectAttempts,
-        healthState: "logged-out",
-      });
       runtime.error(
         `WhatsApp session logged out. Run \`${formatCliCommand("openclaw channels login --channel web")}\` to relink.`,
       );
@@ -397,15 +403,9 @@ export async function monitorWebChannel(
     }
 
     if (isNonRetryableWebCloseStatus(statusCode)) {
-      statusController.noteClose({
-        statusCode: numericStatusCode,
-        error: errorStr,
-        reconnectAttempts,
-        healthState: "conflict",
-      });
       reconnectLogger.warn(
         {
-          connectionId: active.connectionId,
+          connectionId,
           status: statusCode,
           error: errorStr,
         },
@@ -419,16 +419,12 @@ export async function monitorWebChannel(
     }
 
     reconnectAttempts += 1;
+    status.reconnectAttempts = reconnectAttempts;
+    emitStatus();
     if (reconnectPolicy.maxAttempts > 0 && reconnectAttempts >= reconnectPolicy.maxAttempts) {
-      statusController.noteClose({
-        statusCode: numericStatusCode,
-        error: errorStr,
-        reconnectAttempts,
-        healthState: "stopped",
-      });
       reconnectLogger.warn(
         {
-          connectionId: active.connectionId,
+          connectionId,
           status: statusCode,
           reconnectAttempts,
           maxAttempts: reconnectPolicy.maxAttempts,
@@ -442,16 +438,10 @@ export async function monitorWebChannel(
       break;
     }
 
-    statusController.noteClose({
-      statusCode: numericStatusCode,
-      error: errorStr,
-      reconnectAttempts,
-      healthState: "reconnecting",
-    });
     const delay = computeBackoff(reconnectPolicy, reconnectAttempts);
     reconnectLogger.info(
       {
-        connectionId: active.connectionId,
+        connectionId,
         status: statusCode,
         reconnectAttempts,
         maxAttempts: reconnectPolicy.maxAttempts || "unlimited",
@@ -470,7 +460,10 @@ export async function monitorWebChannel(
     }
   }
 
-  statusController.markStopped();
+  status.running = false;
+  status.connected = false;
+  status.lastEventAt = Date.now();
+  emitStatus();
 
   process.removeListener("SIGINT", handleSigint);
 }

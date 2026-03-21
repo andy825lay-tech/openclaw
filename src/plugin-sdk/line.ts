@@ -31,26 +31,17 @@ export {
   normalizeAccountId,
   resolveDefaultLineAccountId,
   resolveLineAccount,
-} from "../../extensions/line/api.js";
-export { LineConfigSchema } from "../../extensions/line/api.js";
-export type {
-  LineChannelData,
-  LineConfig,
-  ResolvedLineAccount,
-} from "../../extensions/line/api.js";
-export type { LineProbeResult } from "../../extensions/line/api.js";
+} from "../line/accounts.js";
+export { lineSetupAdapter, lineSetupWizard } from "../../extensions/line/setup-api.js";
+export { LineConfigSchema } from "../line/config-schema.js";
+export type { LineChannelData, LineConfig, ResolvedLineAccount } from "../line/types.js";
 export {
   createActionCard,
-  createAgendaCard,
-  createAppleTvRemoteCard,
-  createDeviceControlCard,
-  createEventCard,
   createImageCard,
   createInfoCard,
   createListCard,
-  createMediaPlayerCard,
   createReceiptCard,
   type CardAction,
   type ListItem,
-} from "../../extensions/line/api.js";
-export { processLineMessage } from "../../extensions/line/api.js";
+} from "../line/flex-templates.js";
+export { processLineMessage } from "../line/markdown-to-line.js";

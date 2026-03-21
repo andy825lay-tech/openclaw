@@ -1,12 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  promptSetupWizardAllowFrom,
-  resolveSetupWizardAllowFromEntries,
-  resolveSetupWizardGroupAllowlist,
-  runSetupWizardFinalize,
-  runSetupWizardPrepare,
-} from "../../../test/helpers/extensions/setup-wizard.js";
-import {
   createAllowlistSetupWizardProxy,
   createDelegatedFinalize,
   createDelegatedPrepare,
@@ -53,7 +46,15 @@ describe("createDelegatedPrepare", () => {
 
     const prepare = createDelegatedPrepare(loadWizard);
 
-    expect(await runSetupWizardPrepare({ prepare })).toEqual({
+    expect(
+      await prepare({
+        cfg: {},
+        accountId: "default",
+        credentialValues: {},
+        runtime: {} as never,
+        prompter: {} as never,
+      }),
+    ).toEqual({
       cfg: {
         channels: {
           demo: { enabled: true },
@@ -87,7 +88,16 @@ describe("createDelegatedFinalize", () => {
 
     const finalize = createDelegatedFinalize(loadWizard);
 
-    expect(await runSetupWizardFinalize({ finalize, forceAllowFrom: true })).toEqual({
+    expect(
+      await finalize({
+        cfg: {},
+        accountId: "default",
+        credentialValues: {},
+        runtime: {} as never,
+        prompter: {} as never,
+        forceAllowFrom: true,
+      }),
+    ).toEqual({
       cfg: {
         channels: {
           demo: { forceAllowFrom: true },
@@ -149,18 +159,27 @@ describe("createAllowlistSetupWizardProxy", () => {
     });
 
     expect(
-      await promptSetupWizardAllowFrom({ promptAllowFrom: wizard.dmPolicy?.promptAllowFrom }),
+      await wizard.dmPolicy?.promptAllowFrom?.({
+        cfg: {},
+        prompter: {} as never,
+        accountId: "default",
+      }),
     ).toEqual({});
     expect(
-      await resolveSetupWizardAllowFromEntries({
-        resolveEntries: wizard.allowFrom?.resolveEntries,
+      await wizard.allowFrom?.resolveEntries({
+        cfg: {},
+        accountId: "default",
+        credentialValues: {},
         entries: ["alice"],
       }),
     ).toEqual([{ input: "alice", resolved: false, id: null }]);
     expect(
-      await resolveSetupWizardGroupAllowlist({
-        resolveAllowlist: wizard.groupAccess?.resolveAllowlist,
+      await wizard.groupAccess?.resolveAllowlist?.({
+        cfg: {},
+        accountId: "default",
+        credentialValues: {},
         entries: ["general"],
+        prompter: {} as never,
       }),
     ).toEqual([{ input: "general" }]);
   });
@@ -212,14 +231,31 @@ describe("createDelegatedSetupWizardProxy", () => {
     expect(await wizard.status.resolveStatusLines?.({ cfg: {}, configured: false })).toEqual([
       "line",
     ]);
-    expect(await runSetupWizardPrepare({ prepare: wizard.prepare })).toEqual({
+    expect(
+      await wizard.prepare?.({
+        cfg: {},
+        accountId: "default",
+        credentialValues: {},
+        runtime: {} as never,
+        prompter: {} as never,
+      }),
+    ).toEqual({
       cfg: {
         channels: {
           demo: { prepared: true },
         },
       },
     });
-    expect(await runSetupWizardFinalize({ finalize: wizard.finalize })).toEqual({
+    expect(
+      await wizard.finalize?.({
+        cfg: {},
+        accountId: "default",
+        credentialValues: {},
+        runtime: {} as never,
+        prompter: {} as never,
+        forceAllowFrom: false,
+      }),
+    ).toEqual({
       cfg: {
         channels: {
           demo: { finalized: true },

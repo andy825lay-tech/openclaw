@@ -1,5 +1,6 @@
 import path from "node:path";
 import {
+  DEFAULT_SAFE_BINS,
   analyzeShellCommand,
   isWindowsPlatform,
   matchAllowlist,
@@ -12,7 +13,6 @@ import {
 } from "./exec-approvals-analysis.js";
 import type { ExecAllowlistEntry } from "./exec-approvals.js";
 import {
-  DEFAULT_SAFE_BINS,
   SAFE_BIN_PROFILES,
   type SafeBinProfile,
   validateSafeBinArgv,
@@ -31,7 +31,7 @@ function hasShellLineContinuation(command: string): boolean {
   return /\\(?:\r\n|\n|\r)/.test(command);
 }
 
-export function normalizeSafeBins(entries?: readonly string[]): Set<string> {
+export function normalizeSafeBins(entries?: string[]): Set<string> {
   if (!Array.isArray(entries)) {
     return new Set();
   }
@@ -41,7 +41,7 @@ export function normalizeSafeBins(entries?: readonly string[]): Set<string> {
   return new Set(normalized);
 }
 
-export function resolveSafeBins(entries?: readonly string[] | null): Set<string> {
+export function resolveSafeBins(entries?: string[] | null): Set<string> {
   if (entries === undefined) {
     return normalizeSafeBins(DEFAULT_SAFE_BINS);
   }
@@ -92,7 +92,7 @@ export function isSafeBinUsage(params: {
   if (!profile) {
     return false;
   }
-  return validateSafeBinArgv(argv, profile, { binName: execName });
+  return validateSafeBinArgv(argv, profile);
 }
 
 function isPathScopedExecutableToken(token: string): boolean {

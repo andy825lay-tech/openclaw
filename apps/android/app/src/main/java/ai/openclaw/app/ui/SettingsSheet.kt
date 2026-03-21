@@ -149,10 +149,8 @@ fun SettingsSheet(viewModel: MainViewModel) {
 
   val smsPermissionAvailable =
     remember {
-      BuildConfig.OPENCLAW_ENABLE_SMS &&
-        context.packageManager?.hasSystemFeature(PackageManager.FEATURE_TELEPHONY) == true
+      context.packageManager?.hasSystemFeature(PackageManager.FEATURE_TELEPHONY) == true
     }
-  val callLogPermissionAvailable = remember { BuildConfig.OPENCLAW_ENABLE_CALL_LOG }
   val photosPermission =
     if (Build.VERSION.SDK_INT >= 33) {
       Manifest.permission.READ_MEDIA_IMAGES
@@ -624,33 +622,31 @@ fun SettingsSheet(viewModel: MainViewModel) {
               }
             },
           )
-          if (callLogPermissionAvailable) {
-            HorizontalDivider(color = mobileBorder)
-            ListItem(
-              modifier = Modifier.fillMaxWidth(),
-              colors = listItemColors,
-              headlineContent = { Text("Call Log", style = mobileHeadline) },
-              supportingContent = { Text("Search recent call history.", style = mobileCallout) },
-              trailingContent = {
-                Button(
-                  onClick = {
-                    if (callLogPermissionGranted) {
-                      openAppSettings(context)
-                    } else {
-                      callLogPermissionLauncher.launch(Manifest.permission.READ_CALL_LOG)
-                    }
-                  },
-                  colors = settingsPrimaryButtonColors(),
-                  shape = RoundedCornerShape(14.dp),
-                ) {
-                  Text(
-                    if (callLogPermissionGranted) "Manage" else "Grant",
-                    style = mobileCallout.copy(fontWeight = FontWeight.Bold),
-                  )
-                }
-              },
-            )
-          }
+          HorizontalDivider(color = mobileBorder)
+          ListItem(
+            modifier = Modifier.fillMaxWidth(),
+            colors = listItemColors,
+            headlineContent = { Text("Call Log", style = mobileHeadline) },
+            supportingContent = { Text("Search recent call history.", style = mobileCallout) },
+            trailingContent = {
+              Button(
+                onClick = {
+                  if (callLogPermissionGranted) {
+                    openAppSettings(context)
+                  } else {
+                    callLogPermissionLauncher.launch(Manifest.permission.READ_CALL_LOG)
+                  }
+                },
+                colors = settingsPrimaryButtonColors(),
+                shape = RoundedCornerShape(14.dp),
+              ) {
+                Text(
+                  if (callLogPermissionGranted) "Manage" else "Grant",
+                  style = mobileCallout.copy(fontWeight = FontWeight.Bold),
+                )
+              }
+            },
+          )
           if (motionAvailable) {
             HorizontalDivider(color = mobileBorder)
             ListItem(

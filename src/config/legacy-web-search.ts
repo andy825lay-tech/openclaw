@@ -1,5 +1,4 @@
 import type { OpenClawConfig } from "./config.js";
-import { mergeMissing } from "./legacy.shared.js";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -57,60 +56,19 @@ function copyLegacyProviderConfig(
   return isRecord(current) ? cloneRecord(current) : undefined;
 }
 
-function hasOwnKey(target: JsonRecord, key: string): boolean {
-  return Object.prototype.hasOwnProperty.call(target, key);
-}
-
-function hasMappedLegacyWebSearchConfig(raw: unknown): boolean {
-  const search = resolveLegacySearchConfig(raw);
-  if (!search) {
-    return false;
-  }
-  if (hasOwnKey(search, "apiKey")) {
-    return true;
-  }
-  return (Object.keys(LEGACY_PROVIDER_MAP) as LegacyProviderId[]).some((providerId) =>
-    isRecord(search[providerId]),
-  );
-}
-
-function migratePluginWebSearchConfig(params: {
-  root: JsonRecord;
-  legacyPath: string;
-  targetPath: string;
-  pluginId: string;
-  payload: JsonRecord;
-  changes: string[];
-}) {
-  const plugins = ensureRecord(params.root, "plugins");
+function setPluginWebSearchConfig(
+  target: JsonRecord,
+  pluginId: string,
+  webSearchConfig: JsonRecord,
+): void {
+  const plugins = ensureRecord(target, "plugins");
   const entries = ensureRecord(plugins, "entries");
-  const entry = ensureRecord(entries, params.pluginId);
-  const config = ensureRecord(entry, "config");
-  const hadEnabled = entry.enabled !== undefined;
-  const existing = isRecord(config.webSearch) ? cloneRecord(config.webSearch) : undefined;
-
-  if (!hadEnabled) {
+  const entry = ensureRecord(entries, pluginId);
+  if (entry.enabled === undefined) {
     entry.enabled = true;
   }
-
-  if (!existing) {
-    config.webSearch = cloneRecord(params.payload);
-    params.changes.push(`Moved ${params.legacyPath} → ${params.targetPath}.`);
-    return;
-  }
-
-  const merged = cloneRecord(existing);
-  mergeMissing(merged, params.payload);
-  const changed = JSON.stringify(merged) !== JSON.stringify(existing) || !hadEnabled;
-  config.webSearch = merged;
-  if (changed) {
-    params.changes.push(
-      `Merged ${params.legacyPath} → ${params.targetPath} (filled missing fields from legacy; kept explicit plugin config values).`,
-    );
-    return;
-  }
-
-  params.changes.push(`Removed ${params.legacyPath} (${params.targetPath} already set).`);
+  const config = ensureRecord(entry, "config");
+  config.webSearch = webSearchConfig;
 }
 
 export function listLegacyWebSearchConfigPaths(raw: unknown): string[] {
@@ -144,73 +102,24 @@ export function normalizeLegacyWebSearchConfig<T>(raw: T): T {
     return raw;
   }
 
-  return normalizeLegacyWebSearchConfigRecord(raw).config;
-}
-
-export function migrateLegacyWebSearchConfig<T>(raw: T): { config: T; changes: string[] } {
-  if (!isRecord(raw)) {
-    return { config: raw, changes: [] };
-  }
-
-  if (!hasMappedLegacyWebSearchConfig(raw)) {
-    return { config: raw, changes: [] };
-  }
-
-  return normalizeLegacyWebSearchConfigRecord(raw);
-}
-
-function normalizeLegacyWebSearchConfigRecord<T extends JsonRecord>(
-  raw: T,
-): {
-  config: T;
-  changes: string[];
-} {
   const nextRoot = cloneRecord(raw);
   const tools = ensureRecord(nextRoot, "tools");
   const web = ensureRecord(tools, "web");
-  const search = resolveLegacySearchConfig(nextRoot);
-  if (!search) {
-    return { config: raw, changes: [] };
-  }
   const nextSearch: JsonRecord = {};
-  const changes: string[] = [];
 
   for (const [key, value] of Object.entries(search)) {
-    if (key === "apiKey") {
-      continue;
-    }
-    if (
-      (Object.keys(LEGACY_PROVIDER_MAP) as LegacyProviderId[]).includes(key as LegacyProviderId)
-    ) {
-      if (isRecord(value)) {
-        continue;
-      }
-    }
-    if (GENERIC_WEB_SEARCH_KEYS.has(key) || !isRecord(value)) {
+    if (GENERIC_WEB_SEARCH_KEYS.has(key)) {
       nextSearch[key] = value;
     }
   }
   web.search = nextSearch;
 
-  const legacyBraveConfig = copyLegacyProviderConfig(search, "brave");
-  const braveConfig = legacyBraveConfig ?? {};
-  if (hasOwnKey(search, "apiKey")) {
+  const braveConfig = copyLegacyProviderConfig(search, "brave") ?? {};
+  if ("apiKey" in search) {
     braveConfig.apiKey = search.apiKey;
   }
   if (Object.keys(braveConfig).length > 0) {
-    migratePluginWebSearchConfig({
-      root: nextRoot,
-      legacyPath: hasOwnKey(search, "apiKey")
-        ? "tools.web.search.apiKey"
-        : "tools.web.search.brave",
-      targetPath:
-        hasOwnKey(search, "apiKey") && !legacyBraveConfig
-          ? "plugins.entries.brave.config.webSearch.apiKey"
-          : "plugins.entries.brave.config.webSearch",
-      pluginId: LEGACY_PROVIDER_MAP.brave,
-      payload: braveConfig,
-      changes,
-    });
+    setPluginWebSearchConfig(nextRoot, LEGACY_PROVIDER_MAP.brave, braveConfig);
   }
 
   for (const providerId of ["firecrawl", "gemini", "grok", "kimi", "perplexity"] as const) {
@@ -218,17 +127,10 @@ function normalizeLegacyWebSearchConfigRecord<T extends JsonRecord>(
     if (!scoped || Object.keys(scoped).length === 0) {
       continue;
     }
-    migratePluginWebSearchConfig({
-      root: nextRoot,
-      legacyPath: `tools.web.search.${providerId}`,
-      targetPath: `plugins.entries.${LEGACY_PROVIDER_MAP[providerId]}.config.webSearch`,
-      pluginId: LEGACY_PROVIDER_MAP[providerId],
-      payload: scoped,
-      changes,
-    });
+    setPluginWebSearchConfig(nextRoot, LEGACY_PROVIDER_MAP[providerId], scoped);
   }
 
-  return { config: nextRoot, changes };
+  return nextRoot as T;
 }
 
 export function resolvePluginWebSearchConfig(

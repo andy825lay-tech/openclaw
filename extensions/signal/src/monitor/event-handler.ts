@@ -1,33 +1,32 @@
 import { resolveHumanDelayConfig } from "openclaw/plugin-sdk/agent-runtime";
-import { logTypingFailure } from "openclaw/plugin-sdk/channel-feedback";
-import {
-  buildMentionRegexes,
-  createChannelInboundDebouncer,
-  formatInboundEnvelope,
-  formatInboundFromLabel,
-  matchesMentionPatterns,
-  resolveEnvelopeFormatOptions,
-  shouldDebounceTextInbound,
-} from "openclaw/plugin-sdk/channel-inbound";
-import {
-  logInboundDrop,
-  resolveMentionGatingWithBypass,
-} from "openclaw/plugin-sdk/channel-inbound";
 import { createChannelReplyPipeline } from "openclaw/plugin-sdk/channel-reply-pipeline";
-import { resolveControlCommandGate } from "openclaw/plugin-sdk/command-auth";
-import { hasControlCommand } from "openclaw/plugin-sdk/command-auth";
+import { resolveControlCommandGate } from "openclaw/plugin-sdk/channel-runtime";
+import {
+  createChannelInboundDebouncer,
+  shouldDebounceTextInbound,
+} from "openclaw/plugin-sdk/channel-runtime";
+import { logInboundDrop, logTypingFailure } from "openclaw/plugin-sdk/channel-runtime";
+import { resolveMentionGatingWithBypass } from "openclaw/plugin-sdk/channel-runtime";
+import { normalizeSignalMessagingTarget } from "openclaw/plugin-sdk/channel-runtime";
+import { recordInboundSession } from "openclaw/plugin-sdk/channel-runtime";
 import { resolveChannelGroupRequireMention } from "openclaw/plugin-sdk/config-runtime";
 import { readSessionUpdatedAt, resolveStorePath } from "openclaw/plugin-sdk/config-runtime";
-import { recordInboundSession } from "openclaw/plugin-sdk/conversation-runtime";
 import { enqueueSystemEvent } from "openclaw/plugin-sdk/infra-runtime";
 import { kindFromMime } from "openclaw/plugin-sdk/media-runtime";
+import { hasControlCommand } from "openclaw/plugin-sdk/reply-runtime";
+import { dispatchInboundMessage } from "openclaw/plugin-sdk/reply-runtime";
+import {
+  formatInboundEnvelope,
+  formatInboundFromLabel,
+  resolveEnvelopeFormatOptions,
+} from "openclaw/plugin-sdk/reply-runtime";
 import {
   buildPendingHistoryContextFromMap,
   clearHistoryEntriesIfEnabled,
   recordPendingHistoryEntryIfEnabled,
-} from "openclaw/plugin-sdk/reply-history";
-import { dispatchInboundMessage } from "openclaw/plugin-sdk/reply-runtime";
+} from "openclaw/plugin-sdk/reply-runtime";
 import { finalizeInboundContext } from "openclaw/plugin-sdk/reply-runtime";
+import { buildMentionRegexes, matchesMentionPatterns } from "openclaw/plugin-sdk/reply-runtime";
 import { createReplyDispatcherWithTyping } from "openclaw/plugin-sdk/reply-runtime";
 import { resolveAgentRoute } from "openclaw/plugin-sdk/routing";
 import { danger, logVerbose, shouldLogVerbose } from "openclaw/plugin-sdk/runtime-env";
@@ -47,7 +46,6 @@ import {
   resolveSignalSender,
   type SignalSender,
 } from "../identity.js";
-import { normalizeSignalMessagingTarget } from "../runtime-api.js";
 import { sendMessageSignal, sendReadReceiptSignal, sendTypingSignal } from "../send.js";
 import { handleSignalDirectMessageAccess, resolveSignalAccessState } from "./access-policy.js";
 import type {

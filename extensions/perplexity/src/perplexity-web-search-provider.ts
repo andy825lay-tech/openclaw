@@ -7,10 +7,8 @@ import {
 import {
   buildSearchCacheKey,
   DEFAULT_SEARCH_COUNT,
-  getScopedCredentialValue,
   MAX_SEARCH_COUNT,
   isoToPerplexityDate,
-  mergeScopedSearchConfig,
   normalizeFreshness,
   normalizeToIsoDate,
   readCachedSearchPayload,
@@ -21,7 +19,6 @@ import {
   resolveSearchCount,
   resolveSearchTimeoutSeconds,
   resolveSiteName,
-  setScopedCredentialValue,
   setProviderWebSearchPluginConfigValue,
   throwWebSearchApiError,
   type SearchConfigRecord,
@@ -653,8 +650,7 @@ export function createPerplexityWebSearchProvider(): WebSearchProviderPlugin {
   return {
     id: "perplexity",
     label: "Perplexity Search",
-    hint: "Requires Perplexity API key or OpenRouter API key · structured results",
-    credentialLabel: "Perplexity API key",
+    hint: "Structured results · domain/country/language/time filters",
     envVars: ["PERPLEXITY_API_KEY", "OPENROUTER_API_KEY"],
     placeholder: "pplx-...",
     signupUrl: "https://www.perplexity.ai/settings/api",
@@ -662,9 +658,20 @@ export function createPerplexityWebSearchProvider(): WebSearchProviderPlugin {
     autoDetectOrder: 50,
     credentialPath: "plugins.entries.perplexity.config.webSearch.apiKey",
     inactiveSecretPaths: ["plugins.entries.perplexity.config.webSearch.apiKey"],
-    getCredentialValue: (searchConfig) => getScopedCredentialValue(searchConfig, "perplexity"),
-    setCredentialValue: (searchConfigTarget, value) =>
-      setScopedCredentialValue(searchConfigTarget, "perplexity", value),
+    getCredentialValue: (searchConfig) => {
+      const perplexity = searchConfig?.perplexity;
+      return perplexity && typeof perplexity === "object" && !Array.isArray(perplexity)
+        ? (perplexity as Record<string, unknown>).apiKey
+        : undefined;
+    },
+    setCredentialValue: (searchConfigTarget, value) => {
+      const scoped = searchConfigTarget.perplexity;
+      if (!scoped || typeof scoped !== "object" || Array.isArray(scoped)) {
+        searchConfigTarget.perplexity = { apiKey: value };
+        return;
+      }
+      (scoped as Record<string, unknown>).apiKey = value;
+    },
     getConfiguredCredentialValue: (config) =>
       resolveProviderWebSearchPluginConfig(config, "perplexity")?.apiKey,
     setConfiguredCredentialValue: (configTarget, value) => {
@@ -672,11 +679,17 @@ export function createPerplexityWebSearchProvider(): WebSearchProviderPlugin {
     },
     resolveRuntimeMetadata: (ctx) => ({
       perplexityTransport: resolveRuntimeTransport({
-        searchConfig: mergeScopedSearchConfig(
-          ctx.searchConfig as SearchConfigRecord | undefined,
-          "perplexity",
-          resolveProviderWebSearchPluginConfig(ctx.config, "perplexity"),
-        ) as SearchConfigRecord | undefined,
+        searchConfig: {
+          ...(ctx.searchConfig as SearchConfigRecord | undefined),
+          perplexity: {
+            ...((ctx.searchConfig as SearchConfigRecord | undefined)?.perplexity as
+              | Record<string, unknown>
+              | undefined),
+            ...(resolveProviderWebSearchPluginConfig(ctx.config, "perplexity") as
+              | Record<string, unknown>
+              | undefined),
+          },
+        },
         resolvedKey: ctx.resolvedCredential?.value,
         keySource: ctx.resolvedCredential?.source ?? "missing",
         fallbackEnvVar: ctx.resolvedCredential?.fallbackEnvVar,
@@ -684,11 +697,20 @@ export function createPerplexityWebSearchProvider(): WebSearchProviderPlugin {
     }),
     createTool: (ctx) =>
       createPerplexityToolDefinition(
-        mergeScopedSearchConfig(
-          ctx.searchConfig as SearchConfigRecord | undefined,
-          "perplexity",
-          resolveProviderWebSearchPluginConfig(ctx.config, "perplexity"),
-        ) as SearchConfigRecord | undefined,
+        (() => {
+          const searchConfig = ctx.searchConfig as SearchConfigRecord | undefined;
+          const pluginConfig = resolveProviderWebSearchPluginConfig(ctx.config, "perplexity");
+          if (!pluginConfig) {
+            return searchConfig;
+          }
+          return {
+            ...(searchConfig ?? {}),
+            perplexity: {
+              ...resolvePerplexityConfig(searchConfig),
+              ...pluginConfig,
+            },
+          } as SearchConfigRecord;
+        })(),
         ctx.runtimeMetadata?.perplexityTransport as PerplexityTransport | undefined,
       ),
   };

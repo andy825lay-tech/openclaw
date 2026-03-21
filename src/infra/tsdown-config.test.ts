@@ -36,7 +36,6 @@ describe("tsdown config", () => {
       expect.arrayContaining([
         "index",
         "plugins/runtime/index",
-        "plugin-sdk/compat",
         "plugin-sdk/index",
         "extensions/openai/index",
         "bundled/boot-md/handler",

@@ -5,10 +5,6 @@ import {
   resolveInboundDebounceMs,
 } from "../../../src/auto-reply/inbound-debounce.js";
 import { createPluginRuntimeMock } from "../../../test/helpers/extensions/plugin-runtime-mock.js";
-import {
-  createNonExitingTypedRuntimeEnv,
-  createRuntimeEnv,
-} from "../../../test/helpers/extensions/runtime-env.js";
 import type { ClawdbotConfig, RuntimeEnv } from "../runtime-api.js";
 import { parseFeishuMessageEvent, type FeishuMessageEvent } from "./bot.js";
 import * as dedup from "./dedup.js";
@@ -176,7 +172,11 @@ async function setupDebounceMonitor(params?: {
   await monitorSingleAccount({
     cfg: buildDebounceConfig(),
     account: buildDebounceAccount(),
-    runtime: createNonExitingTypedRuntimeEnv<RuntimeEnv>(),
+    runtime: {
+      log: vi.fn(),
+      error: vi.fn(),
+      exit: vi.fn(),
+    } as RuntimeEnv,
     botOpenIdSource: {
       kind: "prefetched",
       botOpenId: params?.botOpenId ?? "ou_bot",
@@ -452,7 +452,11 @@ describe("monitorSingleAccount lifecycle", () => {
     await monitorSingleAccount({
       cfg: buildDebounceConfig(),
       account: buildDebounceAccount(),
-      runtime: createNonExitingTypedRuntimeEnv<RuntimeEnv>(),
+      runtime: {
+        log: vi.fn(),
+        error: vi.fn(),
+        exit: vi.fn(),
+      } as RuntimeEnv,
       botOpenIdSource: {
         kind: "prefetched",
         botOpenId: "ou_bot",
@@ -489,7 +493,11 @@ describe("monitorSingleAccount lifecycle", () => {
       monitorSingleAccount({
         cfg: buildDebounceConfig(),
         account: buildDebounceAccount(),
-        runtime: createNonExitingTypedRuntimeEnv<RuntimeEnv>(),
+        runtime: {
+          log: vi.fn(),
+          error: vi.fn(),
+          exit: vi.fn(),
+        } as RuntimeEnv,
         botOpenIdSource: {
           kind: "prefetched",
           botOpenId: "ou_bot",

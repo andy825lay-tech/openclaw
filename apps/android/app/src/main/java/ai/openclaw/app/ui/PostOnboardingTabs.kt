@@ -39,9 +39,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.zIndex
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -70,19 +68,10 @@ private enum class StatusVisual {
 @Composable
 fun PostOnboardingTabs(viewModel: MainViewModel, modifier: Modifier = Modifier) {
   var activeTab by rememberSaveable { mutableStateOf(HomeTab.Connect) }
-  var chatTabStarted by rememberSaveable { mutableStateOf(false) }
-  var screenTabStarted by rememberSaveable { mutableStateOf(false) }
 
-  // Stop TTS when user navigates away from voice tab, and lazily keep the Chat/Screen tabs
-  // alive after the first visit so repeated tab switches do not rebuild their UI trees.
+  // Stop TTS when user navigates away from voice tab
   LaunchedEffect(activeTab) {
     viewModel.setVoiceScreenActive(activeTab == HomeTab.Voice)
-    if (activeTab == HomeTab.Chat) {
-      chatTabStarted = true
-    }
-    if (activeTab == HomeTab.Screen) {
-      screenTabStarted = true
-    }
   }
 
   val statusText by viewModel.statusText.collectAsState()
@@ -131,35 +120,11 @@ fun PostOnboardingTabs(viewModel: MainViewModel, modifier: Modifier = Modifier) 
           .consumeWindowInsets(innerPadding)
           .background(mobileBackgroundGradient),
     ) {
-      if (chatTabStarted) {
-        Box(
-          modifier =
-            Modifier
-              .matchParentSize()
-              .alpha(if (activeTab == HomeTab.Chat) 1f else 0f)
-              .zIndex(if (activeTab == HomeTab.Chat) 1f else 0f),
-        ) {
-          ChatSheet(viewModel = viewModel)
-        }
-      }
-
-      if (screenTabStarted) {
-        ScreenTabScreen(
-          viewModel = viewModel,
-          visible = activeTab == HomeTab.Screen,
-          modifier =
-            Modifier
-              .matchParentSize()
-              .alpha(if (activeTab == HomeTab.Screen) 1f else 0f)
-              .zIndex(if (activeTab == HomeTab.Screen) 1f else 0f),
-        )
-      }
-
       when (activeTab) {
         HomeTab.Connect -> ConnectTabScreen(viewModel = viewModel)
-        HomeTab.Chat -> if (!chatTabStarted) ChatSheet(viewModel = viewModel)
+        HomeTab.Chat -> ChatSheet(viewModel = viewModel)
         HomeTab.Voice -> VoiceTabScreen(viewModel = viewModel)
-        HomeTab.Screen -> Unit
+        HomeTab.Screen -> ScreenTabScreen(viewModel = viewModel)
         HomeTab.Settings -> SettingsSheet(viewModel = viewModel)
       }
     }
@@ -167,19 +132,16 @@ fun PostOnboardingTabs(viewModel: MainViewModel, modifier: Modifier = Modifier) 
 }
 
 @Composable
-private fun ScreenTabScreen(viewModel: MainViewModel, visible: Boolean, modifier: Modifier = Modifier) {
+private fun ScreenTabScreen(viewModel: MainViewModel) {
   val isConnected by viewModel.isConnected.collectAsState()
-  var refreshedForCurrentConnection by rememberSaveable(isConnected) { mutableStateOf(false) }
-
-  LaunchedEffect(isConnected, visible, refreshedForCurrentConnection) {
-    if (visible && isConnected && !refreshedForCurrentConnection) {
+  LaunchedEffect(isConnected) {
+    if (isConnected) {
       viewModel.refreshHomeCanvasOverviewIfConnected()
-      refreshedForCurrentConnection = true
     }
   }
 
-  Box(modifier = modifier.fillMaxSize()) {
-    CanvasScreen(viewModel = viewModel, visible = visible, modifier = Modifier.fillMaxSize())
+  Box(modifier = Modifier.fillMaxSize()) {
+    CanvasScreen(viewModel = viewModel, modifier = Modifier.fillMaxSize())
   }
 }
 

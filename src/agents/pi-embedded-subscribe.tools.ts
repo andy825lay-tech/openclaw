@@ -187,75 +187,25 @@ export function filterToolResultMediaUrls(
  * Extract media file paths from a tool result.
  *
  * Strategy (first match wins):
- * 1. Read structured `details.media` attachments from tool details.
- * 2. Parse legacy `MEDIA:` tokens from text content blocks.
- * 3. Fall back to `details.path` when image content exists (legacy imageResult).
+ * 1. Parse `MEDIA:` tokens from text content blocks (all OpenClaw tools).
+ * 2. Fall back to `details.path` when image content exists (OpenClaw imageResult).
  *
  * Returns an empty array when no media is found (e.g. Pi SDK `read` tool
  * returns base64 image data but no file path; those need a different delivery
  * path like saving to a temp file).
  */
-export type ToolResultMediaArtifact = {
-  mediaUrls: string[];
-  audioAsVoice?: boolean;
-};
-
-function readToolResultDetailsMedia(
-  result: Record<string, unknown>,
-): Record<string, unknown> | undefined {
-  const details =
-    result.details && typeof result.details === "object" && !Array.isArray(result.details)
-      ? (result.details as Record<string, unknown>)
-      : undefined;
-  const media =
-    details?.media && typeof details.media === "object" && !Array.isArray(details.media)
-      ? (details.media as Record<string, unknown>)
-      : undefined;
-  return media;
-}
-
-function collectStructuredMediaUrls(media: Record<string, unknown>): string[] {
-  const urls: string[] = [];
-  if (typeof media.mediaUrl === "string" && media.mediaUrl.trim()) {
-    urls.push(media.mediaUrl.trim());
-  }
-  if (Array.isArray(media.mediaUrls)) {
-    urls.push(
-      ...media.mediaUrls
-        .filter((value): value is string => typeof value === "string")
-        .map((value) => value.trim())
-        .filter(Boolean),
-    );
-  }
-  return Array.from(new Set(urls));
-}
-
-export function extractToolResultMediaArtifact(
-  result: unknown,
-): ToolResultMediaArtifact | undefined {
+export function extractToolResultMediaPaths(result: unknown): string[] {
   if (!result || typeof result !== "object") {
-    return undefined;
+    return [];
   }
   const record = result as Record<string, unknown>;
-  const detailsMedia = readToolResultDetailsMedia(record);
-  if (detailsMedia) {
-    const mediaUrls = collectStructuredMediaUrls(detailsMedia);
-    if (mediaUrls.length > 0) {
-      return {
-        mediaUrls,
-        ...(detailsMedia.audioAsVoice === true ? { audioAsVoice: true } : {}),
-      };
-    }
-  }
-
   const content = Array.isArray(record.content) ? record.content : null;
   if (!content) {
-    return undefined;
+    return [];
   }
 
-  // Extract legacy MEDIA: paths from text content blocks using the shared
-  // parser so directive matching and validation stay in sync with outbound
-  // reply parsing.
+  // Extract MEDIA: paths from text content blocks using the shared parser so
+  // directive matching and validation stay in sync with outbound reply parsing.
   const paths: string[] = [];
   let hasImageContent = false;
   for (const item of content) {
@@ -276,24 +226,19 @@ export function extractToolResultMediaArtifact(
   }
 
   if (paths.length > 0) {
-    return { mediaUrls: paths };
+    return paths;
   }
 
-  // Fall back to legacy details.path when image content exists but no
-  // structured media details or MEDIA: text.
+  // Fall back to details.path when image content exists but no MEDIA: text.
   if (hasImageContent) {
     const details = record.details as Record<string, unknown> | undefined;
     const p = typeof details?.path === "string" ? details.path.trim() : "";
     if (p) {
-      return { mediaUrls: [p] };
+      return [p];
     }
   }
 
-  return undefined;
-}
-
-export function extractToolResultMediaPaths(result: unknown): string[] {
-  return extractToolResultMediaArtifact(result)?.mediaUrls ?? [];
+  return [];
 }
 
 export function isToolResultError(result: unknown): boolean {

@@ -1,4 +1,4 @@
-import { matrixPlugin, setMatrixRuntime } from "../../extensions/matrix/index.js";
+import { matrixPlugin } from "../../extensions/matrix/index.js";
 import { msteamsPlugin } from "../../extensions/msteams/index.js";
 import { nostrPlugin } from "../../extensions/nostr/index.js";
 import { tlonPlugin } from "../../extensions/tlon/index.js";
@@ -12,16 +12,11 @@ import type { ChannelChoice } from "./onboard-types.js";
 type ChannelSetupWizardAdapterPatch = Partial<
   Pick<
     ChannelSetupWizardAdapter,
-    | "afterConfigWritten"
-    | "configure"
-    | "configureInteractive"
-    | "configureWhenConfigured"
-    | "getStatus"
+    "configure" | "configureInteractive" | "configureWhenConfigured" | "getStatus"
   >
 >;
 
 type PatchedSetupAdapterFields = {
-  afterConfigWritten?: ChannelSetupWizardAdapter["afterConfigWritten"];
   configure?: ChannelSetupWizardAdapter["configure"];
   configureInteractive?: ChannelSetupWizardAdapter["configureInteractive"];
   configureWhenConfigured?: ChannelSetupWizardAdapter["configureWhenConfigured"];
@@ -29,11 +24,6 @@ type PatchedSetupAdapterFields = {
 };
 
 export function setDefaultChannelPluginRegistryForTests(): void {
-  setMatrixRuntime({
-    state: {
-      resolveStateDir: (_env, homeDir) => (homeDir ?? (() => "/tmp"))(),
-    },
-  } as Parameters<typeof setMatrixRuntime>[0]);
   const channels = [
     ...bundledChannelPlugins,
     matrixPlugin,
@@ -63,10 +53,6 @@ export function patchChannelSetupWizardAdapter(
     previous.getStatus = adapter.getStatus;
     adapter.getStatus = patch.getStatus ?? adapter.getStatus;
   }
-  if (Object.prototype.hasOwnProperty.call(patch, "afterConfigWritten")) {
-    previous.afterConfigWritten = adapter.afterConfigWritten;
-    adapter.afterConfigWritten = patch.afterConfigWritten;
-  }
   if (Object.prototype.hasOwnProperty.call(patch, "configure")) {
     previous.configure = adapter.configure;
     adapter.configure = patch.configure ?? adapter.configure;
@@ -84,9 +70,6 @@ export function patchChannelSetupWizardAdapter(
     if (Object.prototype.hasOwnProperty.call(patch, "getStatus")) {
       adapter.getStatus = previous.getStatus!;
     }
-    if (Object.prototype.hasOwnProperty.call(patch, "afterConfigWritten")) {
-      adapter.afterConfigWritten = previous.afterConfigWritten;
-    }
     if (Object.prototype.hasOwnProperty.call(patch, "configure")) {
       adapter.configure = previous.configure!;
     }
@@ -98,5 +81,3 @@ export function patchChannelSetupWizardAdapter(
     }
   };
 }
-
-export const patchChannelOnboardingAdapter = patchChannelSetupWizardAdapter;

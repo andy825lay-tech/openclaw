@@ -1,14 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
+import { buildChannelSetupWizardAdapterFromSetupWizard } from "../../../src/channels/plugins/setup-wizard.js";
+import { createRuntimeEnv } from "../../../test/helpers/extensions/runtime-env.js";
 import {
-  createPluginSetupWizardConfigure,
   createTestWizardPrompter,
-  runSetupWizardConfigure,
   type WizardPrompter,
 } from "../../../test/helpers/extensions/setup-wizard.js";
-import type { OpenClawConfig } from "../runtime-api.js";
+import type { OpenClawConfig, RuntimeEnv } from "../runtime-api.js";
 import { zaloPlugin } from "./channel.js";
 
-const zaloConfigure = createPluginSetupWizardConfigure(zaloPlugin);
+const zaloConfigureAdapter = buildChannelSetupWizardAdapterFromSetupWizard({
+  plugin: zaloPlugin,
+  wizard: zaloPlugin.setupWizard!,
+});
 
 describe("zalo setup wizard", () => {
   it("configures a polling token flow", async () => {
@@ -28,11 +31,16 @@ describe("zalo setup wizard", () => {
       }),
     });
 
-    const result = await runSetupWizardConfigure({
-      configure: zaloConfigure,
+    const runtime: RuntimeEnv = createRuntimeEnv();
+
+    const result = await zaloConfigureAdapter.configure({
       cfg: {} as OpenClawConfig,
+      runtime,
       prompter,
-      options: { secretInputMode: "plaintext" as const },
+      options: { secretInputMode: "plaintext" },
+      accountOverrides: {},
+      shouldPromptAccountIds: false,
+      forceAllowFrom: false,
     });
 
     expect(result.accountId).toBe("default");

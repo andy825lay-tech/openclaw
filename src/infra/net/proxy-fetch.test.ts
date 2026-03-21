@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const PROXY_ENV_KEYS = [
   "HTTPS_PROXY",
@@ -44,8 +44,6 @@ const { ProxyAgent, EnvHttpProxyAgent, undiciFetch, proxyAgentSpy, envAgentSpy, 
       getLastAgent: () => ProxyAgent.lastCreated,
     };
   });
-
-const mockedModuleIds = ["undici"] as const;
 
 vi.mock("undici", () => ({
   ProxyAgent,
@@ -210,11 +208,4 @@ describe("resolveProxyFetchFromEnv", () => {
     });
     expect(fetchFn).toBeUndefined();
   });
-});
-
-afterAll(() => {
-  for (const id of mockedModuleIds) {
-    vi.doUnmock(id);
-  }
-  vi.resetModules();
 });

@@ -35,9 +35,6 @@ const baselinePathByMode = {
   ),
 };
 
-let allInventoryByModePromise;
-let parsedExtensionSourceFilesPromise;
-
 const ruleTextByMode = {
   "src-outside-plugin-sdk":
     "Rule: production extensions/** must not import src/** outside src/plugin-sdk/**",
@@ -88,34 +85,6 @@ async function collectExtensionSourceFiles(rootDir) {
   }
   await walk(rootDir);
   return out.toSorted((left, right) => normalizePath(left).localeCompare(normalizePath(right)));
-}
-
-async function collectParsedExtensionSourceFiles() {
-  if (!parsedExtensionSourceFilesPromise) {
-    parsedExtensionSourceFilesPromise = (async () => {
-      const files = await collectExtensionSourceFiles(extensionsRoot);
-      return await Promise.all(
-        files.map(async (filePath) => {
-          const source = await fs.readFile(filePath, "utf8");
-          const scriptKind =
-            filePath.endsWith(".tsx") || filePath.endsWith(".jsx")
-              ? ts.ScriptKind.TSX
-              : ts.ScriptKind.TS;
-          return {
-            filePath,
-            sourceFile: ts.createSourceFile(
-              filePath,
-              source,
-              ts.ScriptTarget.Latest,
-              true,
-              scriptKind,
-            ),
-          };
-        }),
-      );
-    })();
-  }
-  return await parsedExtensionSourceFilesPromise;
 }
 
 function toLine(sourceFile, node) {
@@ -193,42 +162,30 @@ function shouldReport(mode, resolvedPath) {
   return !resolvedPath.startsWith("src/plugin-sdk/");
 }
 
-function collectEntriesByModeFromSourceFile(sourceFile, filePath) {
-  const entriesByMode = {
-    "src-outside-plugin-sdk": [],
-    "plugin-sdk-internal": [],
-    "relative-outside-package": [],
-  };
+function collectFromSourceFile(mode, sourceFile, filePath) {
+  const entries = [];
   const extensionRoot = resolveExtensionRoot(filePath);
 
   function push(kind, specifierNode, specifier) {
     const resolvedPath = resolveSpecifier(specifier, filePath);
-    const baseEntry = {
+    if (mode === "relative-outside-package") {
+      if (!specifier.startsWith(".") || !resolvedPath || !extensionRoot) {
+        return;
+      }
+      if (resolvedPath === extensionRoot || resolvedPath.startsWith(`${extensionRoot}/`)) {
+        return;
+      }
+    } else if (!shouldReport(mode, resolvedPath)) {
+      return;
+    }
+    entries.push({
       file: normalizePath(filePath),
       line: toLine(sourceFile, specifierNode),
       kind,
       specifier,
       resolvedPath,
-    };
-
-    if (specifier.startsWith(".") && resolvedPath && extensionRoot) {
-      if (!(resolvedPath === extensionRoot || resolvedPath.startsWith(`${extensionRoot}/`))) {
-        entriesByMode["relative-outside-package"].push({
-          ...baseEntry,
-          reason: classifyReason("relative-outside-package", kind, resolvedPath, specifier),
-        });
-      }
-    }
-
-    for (const mode of ["src-outside-plugin-sdk", "plugin-sdk-internal"]) {
-      if (!shouldReport(mode, resolvedPath)) {
-        continue;
-      }
-      entriesByMode[mode].push({
-        ...baseEntry,
-        reason: classifyReason(mode, kind, resolvedPath, specifier),
-      });
-    }
+      reason: classifyReason(mode, kind, resolvedPath, specifier),
+    });
   }
 
   function visit(node) {
@@ -252,35 +209,29 @@ function collectEntriesByModeFromSourceFile(sourceFile, filePath) {
   }
 
   visit(sourceFile);
-  return entriesByMode;
+  return entries;
 }
 
 export async function collectExtensionPluginSdkBoundaryInventory(mode) {
   if (!MODES.has(mode)) {
     throw new Error(`Unknown mode: ${mode}`);
   }
-  if (!allInventoryByModePromise) {
-    allInventoryByModePromise = (async () => {
-      const files = await collectParsedExtensionSourceFiles();
-      const inventoryByMode = {
-        "src-outside-plugin-sdk": [],
-        "plugin-sdk-internal": [],
-        "relative-outside-package": [],
-      };
-      for (const { filePath, sourceFile } of files) {
-        const entriesByMode = collectEntriesByModeFromSourceFile(sourceFile, filePath);
-        for (const inventoryMode of MODES) {
-          inventoryByMode[inventoryMode].push(...entriesByMode[inventoryMode]);
-        }
-      }
-      for (const inventoryMode of MODES) {
-        inventoryByMode[inventoryMode] = inventoryByMode[inventoryMode].toSorted(compareEntries);
-      }
-      return inventoryByMode;
-    })();
+  const files = await collectExtensionSourceFiles(extensionsRoot);
+  const inventory = [];
+  for (const filePath of files) {
+    const source = await fs.readFile(filePath, "utf8");
+    const scriptKind =
+      filePath.endsWith(".tsx") || filePath.endsWith(".jsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
+    const sourceFile = ts.createSourceFile(
+      filePath,
+      source,
+      ts.ScriptTarget.Latest,
+      true,
+      scriptKind,
+    );
+    inventory.push(...collectFromSourceFile(mode, sourceFile, filePath));
   }
-  const inventoryByMode = await allInventoryByModePromise;
-  return inventoryByMode[mode];
+  return inventory.toSorted(compareEntries);
 }
 
 export async function readExpectedInventory(mode) {
@@ -335,12 +286,7 @@ function formatInventoryHuman(mode, inventory) {
   return lines.join("\n");
 }
 
-function writeLine(stream, text) {
-  stream.write(`${text}\n`);
-}
-
-export async function runExtensionPluginSdkBoundaryCheck(argv = process.argv.slice(2), io) {
-  const streams = io ?? { stdout: process.stdout, stderr: process.stderr };
+export async function main(argv = process.argv.slice(2)) {
   const json = argv.includes("--json");
   const modeArg = argv.find((arg) => arg.startsWith("--mode="));
   const mode = modeArg?.slice("--mode=".length) ?? "src-outside-plugin-sdk";
@@ -350,49 +296,30 @@ export async function runExtensionPluginSdkBoundaryCheck(argv = process.argv.sli
 
   const actual = await collectExtensionPluginSdkBoundaryInventory(mode);
   if (json) {
-    writeLine(streams.stdout, JSON.stringify(actual, null, 2));
-    return 0;
-  }
-
-  writeLine(streams.stdout, formatInventoryHuman(mode, actual));
-  if (mode === "relative-outside-package") {
-    if (actual.length === 0) {
-      return 0;
-    }
-    writeLine(
-      streams.stderr,
-      `Relative outside-package violations found (${actual.length}); this mode no longer uses a baseline.`,
-    );
-    return 1;
+    process.stdout.write(`${JSON.stringify(actual, null, 2)}\n`);
+    return;
   }
 
   const expected = await readExpectedInventory(mode);
   const diff = diffInventory(expected, actual);
+  console.log(formatInventoryHuman(mode, actual));
   if (diff.missing.length === 0 && diff.unexpected.length === 0) {
-    writeLine(streams.stdout, `Baseline matches (${actual.length} entries).`);
-    return 0;
+    console.log(`Baseline matches (${actual.length} entries).`);
+    return;
   }
   if (diff.missing.length > 0) {
-    writeLine(streams.stderr, `Missing baseline entries (${diff.missing.length}):`);
+    console.error(`Missing baseline entries (${diff.missing.length}):`);
     for (const entry of diff.missing) {
-      writeLine(streams.stderr, `  - ${entry.file}:${entry.line} ${entry.reason}`);
+      console.error(`  - ${entry.file}:${entry.line} ${entry.reason}`);
     }
   }
   if (diff.unexpected.length > 0) {
-    writeLine(streams.stderr, `Unexpected inventory entries (${diff.unexpected.length}):`);
+    console.error(`Unexpected inventory entries (${diff.unexpected.length}):`);
     for (const entry of diff.unexpected) {
-      writeLine(streams.stderr, `  - ${entry.file}:${entry.line} ${entry.reason}`);
+      console.error(`  - ${entry.file}:${entry.line} ${entry.reason}`);
     }
   }
-  return 1;
-}
-
-export async function main(argv = process.argv.slice(2), io) {
-  const exitCode = await runExtensionPluginSdkBoundaryCheck(argv, io);
-  if (!io) {
-    process.exitCode = exitCode;
-  }
-  return exitCode;
+  process.exitCode = 1;
 }
 
 if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {

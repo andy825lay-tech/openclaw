@@ -3,7 +3,6 @@ import { ChannelType, MessageType } from "@buape/carbon";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   dispatchMock,
-  loadConfigMock,
   readAllowFromStoreMock,
   sendMock,
   updateLastRouteMock,
@@ -25,7 +24,6 @@ beforeEach(() => {
   });
   readAllowFromStoreMock.mockClear().mockResolvedValue([]);
   upsertPairingRequestMock.mockClear().mockResolvedValue({ code: "PAIRCODE", created: true });
-  loadConfigMock.mockClear().mockReturnValue(BASE_CFG);
 });
 
 const BASE_CFG: Config = {
@@ -34,9 +32,6 @@ const BASE_CFG: Config = {
       model: { primary: "anthropic/claude-opus-4-5" },
       workspace: "/tmp/openclaw",
     },
-  },
-  messages: {
-    inbound: { debounceMs: 0 },
   },
   session: { store: "/tmp/openclaw-sessions.json" },
 };
@@ -85,7 +80,6 @@ function createHandlerBaseConfig(
 }
 
 async function createDmHandler(opts: { cfg: Config; runtimeError?: (err: unknown) => void }) {
-  loadConfigMock.mockReturnValue(opts.cfg);
   return createDiscordMessageHandler(createHandlerBaseConfig(opts.cfg, opts.runtimeError));
 }
 
@@ -98,10 +92,9 @@ function createDmClient() {
   } as unknown as Client;
 }
 
-async function createCategoryGuildHandler(runtimeError?: (err: unknown) => void) {
-  loadConfigMock.mockReturnValue(CATEGORY_GUILD_CFG);
+async function createCategoryGuildHandler() {
   return createDiscordMessageHandler({
-    ...createHandlerBaseConfig(CATEGORY_GUILD_CFG, runtimeError),
+    ...createHandlerBaseConfig(CATEGORY_GUILD_CFG),
     guildEntries: {
       "*": { requireMention: false, channels: { c1: { allow: true } } },
     },

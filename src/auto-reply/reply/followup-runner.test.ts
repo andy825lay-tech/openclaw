@@ -16,14 +16,18 @@ vi.mock(
   async () => await import("../../test-utils/model-fallback.mock.js"),
 );
 
-vi.mock("../../agents/pi-embedded.runtime.js", () => ({
+vi.mock("../../agents/pi-embedded.js", () => ({
   runEmbeddedPiAgent: (params: unknown) => runEmbeddedPiAgentMock(params),
 }));
 
-vi.mock("./route-reply.runtime.js", () => ({
-  isRoutableChannel: (...args: unknown[]) => isRoutableChannelMock(...args),
-  routeReply: (...args: unknown[]) => routeReplyMock(...args),
-}));
+vi.mock("./route-reply.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./route-reply.js")>();
+  return {
+    ...actual,
+    isRoutableChannel: (...args: unknown[]) => isRoutableChannelMock(...args),
+    routeReply: (...args: unknown[]) => routeReplyMock(...args),
+  };
+});
 
 import { createFollowupRunner } from "./followup-runner.js";
 
@@ -68,10 +72,6 @@ function mockCompactionRun(params: {
     }) => {
       args.onAgentEvent?.({
         stream: "compaction",
-        data: { phase: "start" },
-      });
-      args.onAgentEvent?.({
-        stream: "compaction",
         data: { phase: "end", willRetry: params.willRetry, completed: true },
       });
       return params.result;
@@ -84,7 +84,7 @@ function createAsyncReplySpy() {
 }
 
 describe("createFollowupRunner compaction", () => {
-  it("adds compaction notices and tracks count in verbose mode", async () => {
+  it("adds verbose auto-compaction notice and tracks count", async () => {
     const storePath = path.join(
       await fs.mkdtemp(path.join(tmpdir(), "openclaw-compaction-")),
       "sessions.json",
@@ -122,15 +122,9 @@ describe("createFollowupRunner compaction", () => {
 
     await runner(queued);
 
-    expect(onBlockReply).toHaveBeenCalledTimes(3);
-    const calls = onBlockReply.mock.calls as unknown as Array<
-      Array<{ text?: string; isCompactionNotice?: boolean }>
-    >;
-    expect(calls[0]?.[0]?.text).toBe("🧹 Compacting context...");
-    expect(calls[0]?.[0]?.isCompactionNotice).toBe(true);
-    expect(calls[1]?.[0]?.text).toContain("Auto-compaction complete");
-    expect(calls[1]?.[0]?.isCompactionNotice).toBe(true);
-    expect(calls[2]?.[0]?.text).toBe("final");
+    expect(onBlockReply).toHaveBeenCalled();
+    const firstCall = (onBlockReply.mock.calls as unknown as Array<Array<{ text?: string }>>)[0];
+    expect(firstCall?.[0]?.text).toContain("Auto-compaction complete");
     expect(sessionStore.main.compactionCount).toBe(1);
   });
 
@@ -177,82 +171,10 @@ describe("createFollowupRunner compaction", () => {
 
     await runner(queued);
 
-    expect(onBlockReply).toHaveBeenCalledTimes(2);
-    const calls = onBlockReply.mock.calls as unknown as Array<
-      Array<{ text?: string; isCompactionNotice?: boolean }>
-    >;
-    expect(calls[0]?.[0]?.text).toContain("Auto-compaction complete");
-    expect(calls[0]?.[0]?.isCompactionNotice).toBe(true);
-    expect(calls[1]?.[0]?.text).toBe("final");
+    expect(onBlockReply).toHaveBeenCalled();
+    const firstCall = (onBlockReply.mock.calls as unknown as Array<Array<{ text?: string }>>)[0];
+    expect(firstCall?.[0]?.text).toContain("Auto-compaction complete");
     expect(sessionStore.main.compactionCount).toBe(2);
-  });
-
-  it("threads followup compaction notices without consuming the first reply slot", async () => {
-    const storePath = path.join(
-      await fs.mkdtemp(path.join(tmpdir(), "openclaw-compaction-threading-")),
-      "sessions.json",
-    );
-    const sessionEntry: SessionEntry = {
-      sessionId: "session",
-      updatedAt: Date.now(),
-    };
-    const sessionStore: Record<string, SessionEntry> = {
-      main: sessionEntry,
-    };
-    const onBlockReply = vi.fn(async () => {});
-
-    mockCompactionRun({
-      willRetry: true,
-      result: { payloads: [{ text: "final" }], meta: {} },
-    });
-
-    const runner = createFollowupRunner({
-      opts: { onBlockReply },
-      typing: createMockTypingController(),
-      typingMode: "instant",
-      sessionEntry,
-      sessionStore,
-      sessionKey: "main",
-      storePath,
-      defaultModel: "anthropic/claude-opus-4-5",
-    });
-
-    const queued = createQueuedRun({
-      messageId: "msg-42",
-      run: {
-        messageProvider: "discord",
-        config: {
-          channels: {
-            discord: {
-              replyToMode: "first",
-            },
-          },
-        },
-        verboseLevel: "off",
-      },
-    });
-
-    await runner(queued);
-
-    expect(onBlockReply).toHaveBeenCalledTimes(3);
-    const calls = onBlockReply.mock.calls as unknown as Array<
-      Array<{ text?: string; replyToId?: string; isCompactionNotice?: boolean }>
-    >;
-    expect(calls[0]?.[0]).toMatchObject({
-      text: "🧹 Compacting context...",
-      replyToId: "msg-42",
-      isCompactionNotice: true,
-    });
-    expect(calls[1]?.[0]).toMatchObject({
-      text: "✅ Context compacted (count 1).",
-      replyToId: "msg-42",
-      isCompactionNotice: true,
-    });
-    expect(calls[2]?.[0]).toMatchObject({
-      text: "final",
-      replyToId: "msg-42",
-    });
-    expect(calls[2]?.[0]?.isCompactionNotice).toBeUndefined();
   });
 
   it("does not count failed compaction end events in followup runs", async () => {

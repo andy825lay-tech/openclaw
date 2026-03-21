@@ -1,11 +1,8 @@
 import {
-  createDirectTextMediaOutbound,
   createScopedChannelMediaMaxBytesResolver,
-} from "openclaw/plugin-sdk/media-runtime";
-import {
-  resolveOutboundSendDep,
-  type OutboundSendDeps,
-} from "openclaw/plugin-sdk/outbound-runtime";
+  createDirectTextMediaOutbound,
+} from "openclaw/plugin-sdk/channel-runtime";
+import { resolveOutboundSendDep, type OutboundSendDeps } from "openclaw/plugin-sdk/channel-runtime";
 import { sendMessageIMessage } from "./send.js";
 
 function resolveIMessageSender(deps: OutboundSendDeps | undefined) {

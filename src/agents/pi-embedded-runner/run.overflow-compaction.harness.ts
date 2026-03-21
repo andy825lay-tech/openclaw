@@ -66,7 +66,6 @@ export const mockedEnsureRuntimePluginsLoaded = vi.fn<(params?: unknown) => void
 export const mockedPrepareProviderRuntimeAuth = vi.fn(async () => undefined);
 export const mockedRunEmbeddedAttempt =
   vi.fn<(params: unknown) => Promise<EmbeddedRunAttemptResult>>();
-export const mockedRunContextEngineMaintenance = vi.fn(async () => undefined);
 export const mockedSessionLikelyHasOversizedToolResults = vi.fn(() => false);
 export const mockedTruncateOversizedToolResultsInSession = vi.fn<
   () => Promise<MockTruncateOversizedToolResultsResult>
@@ -174,8 +173,6 @@ export function resetRunOverflowCompactionHarnessMocks(): void {
   mockedPrepareProviderRuntimeAuth.mockReset();
   mockedPrepareProviderRuntimeAuth.mockResolvedValue(undefined);
   mockedRunEmbeddedAttempt.mockReset();
-  mockedRunContextEngineMaintenance.mockReset();
-  mockedRunContextEngineMaintenance.mockResolvedValue(undefined);
   mockedSessionLikelyHasOversizedToolResults.mockReset();
   mockedSessionLikelyHasOversizedToolResults.mockReturnValue(false);
   mockedTruncateOversizedToolResultsInSession.mockReset();
@@ -304,10 +301,6 @@ export async function loadRunOverflowCompactionHarness(): Promise<{
 
   vi.doMock("./run/attempt.js", () => ({
     runEmbeddedAttempt: mockedRunEmbeddedAttempt,
-  }));
-
-  vi.doMock("./context-engine-maintenance.js", () => ({
-    runContextEngineMaintenance: mockedRunContextEngineMaintenance,
   }));
 
   vi.doMock("./model.js", () => ({

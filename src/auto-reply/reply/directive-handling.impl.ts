@@ -13,8 +13,10 @@ import { applyVerboseOverride } from "../../sessions/level-overrides.js";
 import { applyModelOverrideToSessionEntry } from "../../sessions/model-overrides.js";
 import { formatThinkingLevels, formatXHighModelHint, supportsXHighThinking } from "../thinking.js";
 import type { ReplyPayload } from "../types.js";
-import { resolveModelSelectionFromDirective } from "./directive-handling.model-selection.js";
-import { maybeHandleModelDirectiveInfo } from "./directive-handling.model.js";
+import {
+  maybeHandleModelDirectiveInfo,
+  resolveModelSelectionFromDirective,
+} from "./directive-handling.model.js";
 import type { HandleDirectiveOnlyParams } from "./directive-handling.params.js";
 import { maybeHandleQueueDirective } from "./directive-handling.queue-validation.js";
 import {
@@ -135,7 +137,6 @@ export async function handleDirectiveOnly(
     cfg: params.cfg,
     provider: resolvedProvider,
     model: resolvedModel,
-    agentId: activeAgentId,
     sessionEntry,
   });
   const effectiveFastMode = directives.fastMode ?? currentFastMode ?? fastModeState.enabled;

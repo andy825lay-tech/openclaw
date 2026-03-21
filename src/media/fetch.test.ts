@@ -1,15 +1,5 @@
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-
-const fetchWithSsrFGuardMock = vi.hoisted(() => vi.fn());
-
-vi.mock("../infra/net/fetch-guard.js", () => ({
-  fetchWithSsrFGuard: (...args: unknown[]) => fetchWithSsrFGuardMock(...args),
-  withStrictGuardedFetchMode: <T>(params: T) => params,
-}));
-
-type FetchRemoteMedia = typeof import("./fetch.js").fetchRemoteMedia;
-type LookupFn = NonNullable<Parameters<FetchRemoteMedia>[0]["lookupFn"]>;
-let fetchRemoteMedia: FetchRemoteMedia;
+import { describe, expect, it, vi } from "vitest";
+import { fetchRemoteMedia } from "./fetch.js";
 
 function makeStream(chunks: Uint8Array[]) {
   return new ReadableStream<Uint8Array>({
@@ -35,8 +25,10 @@ function makeStallingFetch(firstChunk: Uint8Array) {
   });
 }
 
-function makeLookupFn(): LookupFn {
-  return vi.fn(async () => ({ address: "149.154.167.220", family: 4 })) as unknown as LookupFn;
+function makeLookupFn() {
+  return vi.fn(async () => [{ address: "149.154.167.220", family: 4 }]) as unknown as NonNullable<
+    Parameters<typeof fetchRemoteMedia>[0]["lookupFn"]
+  >;
 }
 
 async function expectRedactedTelegramFetchError(params: {
@@ -67,38 +59,10 @@ describe("fetchRemoteMedia", () => {
   const redactedTelegramToken = `${telegramToken.slice(0, 6)}…${telegramToken.slice(-4)}`;
   const telegramFileUrl = `https://api.telegram.org/file/bot${telegramToken}/photos/1.jpg`;
 
-  beforeAll(async () => {
-    ({ fetchRemoteMedia } = await import("./fetch.js"));
-  });
-
-  beforeEach(() => {
-    vi.useRealTimers();
-    fetchWithSsrFGuardMock.mockReset().mockImplementation(async (paramsUnknown: unknown) => {
-      const params = paramsUnknown as {
-        url: string;
-        fetchImpl?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
-        init?: RequestInit;
-      };
-      if (params.url.startsWith("http://127.0.0.1/")) {
-        throw new Error("Blocked hostname or private/internal/special-use IP address");
-      }
-      const fetcher = params.fetchImpl ?? globalThis.fetch;
-      if (!fetcher) {
-        throw new Error("fetch is not available");
-      }
-      return {
-        response: await fetcher(params.url, params.init),
-        finalUrl: params.url,
-        release: async () => {},
-      };
-    });
-  });
-
   it("rejects when content-length exceeds maxBytes", async () => {
-    const lookupFn = vi.fn(async () => ({
-      address: "93.184.216.34",
-      family: 4,
-    })) as unknown as LookupFn;
+    const lookupFn = vi.fn(async () => [
+      { address: "93.184.216.34", family: 4 },
+    ]) as unknown as NonNullable<Parameters<typeof fetchRemoteMedia>[0]["lookupFn"]>;
     const fetchImpl = async () =>
       new Response(makeStream([new Uint8Array([1, 2, 3, 4, 5])]), {
         status: 200,
@@ -116,10 +80,9 @@ describe("fetchRemoteMedia", () => {
   });
 
   it("rejects when streamed payload exceeds maxBytes", async () => {
-    const lookupFn = vi.fn(async () => ({
-      address: "93.184.216.34",
-      family: 4,
-    })) as unknown as LookupFn;
+    const lookupFn = vi.fn(async () => [
+      { address: "93.184.216.34", family: 4 },
+    ]) as unknown as NonNullable<Parameters<typeof fetchRemoteMedia>[0]["lookupFn"]>;
     const fetchImpl = async () =>
       new Response(makeStream([new Uint8Array([1, 2, 3]), new Uint8Array([4, 5, 6])]), {
         status: 200,
@@ -136,30 +99,23 @@ describe("fetchRemoteMedia", () => {
   });
 
   it("aborts stalled body reads when idle timeout expires", async () => {
-    vi.useFakeTimers();
-    try {
-      const lookupFn = vi.fn(async () => ({
-        address: "93.184.216.34",
-        family: 4,
-      })) as unknown as LookupFn;
-      const fetchImpl = makeStallingFetch(new Uint8Array([1, 2]));
-      const fetchPromise = fetchRemoteMedia({
+    const lookupFn = vi.fn(async () => [
+      { address: "93.184.216.34", family: 4 },
+    ]) as unknown as NonNullable<Parameters<typeof fetchRemoteMedia>[0]["lookupFn"]>;
+    const fetchImpl = makeStallingFetch(new Uint8Array([1, 2]));
+
+    await expect(
+      fetchRemoteMedia({
         url: "https://example.com/file.bin",
         fetchImpl,
         lookupFn,
         maxBytes: 1024,
         readIdleTimeoutMs: 20,
-      });
-      const rejection = expect(fetchPromise).rejects.toMatchObject({
-        code: "fetch_failed",
-        name: "MediaFetchError",
-      });
-
-      await vi.advanceTimersByTimeAsync(25);
-      await rejection;
-    } finally {
-      vi.useRealTimers();
-    }
+      }),
+    ).rejects.toMatchObject({
+      code: "fetch_failed",
+      name: "MediaFetchError",
+    });
   }, 5_000);
 
   it("redacts Telegram bot tokens from fetch failure messages", async () => {

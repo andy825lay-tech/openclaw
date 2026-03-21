@@ -1,20 +1,13 @@
 ---
-summary: "Contributor guide for adding a new shared capability to the OpenClaw plugin system"
+summary: "Cookbook for adding a new shared capability to OpenClaw"
 read_when:
   - Adding a new core capability and plugin registration surface
   - Deciding whether code belongs in core, a vendor plugin, or a feature plugin
   - Wiring a new runtime helper for channels or tools
-title: "Adding Capabilities (Contributor Guide)"
-sidebarTitle: "Adding Capabilities"
+title: "Capability Cookbook"
 ---
 
-# Adding Capabilities
-
-<Info>
-  This is a **contributor guide** for OpenClaw core developers. If you are
-  building an external plugin, see [Building Plugins](/plugins/building-plugins)
-  instead.
-</Info>
+# Capability Cookbook
 
 Use this when OpenClaw needs a new domain such as image generation, video
 generation, or some future vendor-backed feature area.

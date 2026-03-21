@@ -19,8 +19,6 @@ const baselinePath = path.join(
   "fixtures",
   "plugin-extension-import-boundary-inventory.json",
 );
-let cachedInventoryPromise = null;
-let cachedExpectedInventoryPromise = null;
 
 const bundledWebSearchProviders = new Set([
   "brave",
@@ -196,62 +194,33 @@ function scanWebSearchRegistrySmells(sourceFile, filePath) {
 
 function shouldSkipFile(filePath) {
   const relativeFile = normalizePath(filePath);
-  return (
-    relativeFile === "src/plugins/bundled-web-search-registry.ts" ||
-    relativeFile.startsWith("src/plugins/contracts/") ||
-    /^src\/plugins\/runtime\/runtime-[^/]+-contract\.[cm]?[jt]s$/u.test(relativeFile)
-  );
+  return relativeFile.startsWith("src/plugins/contracts/");
 }
 
 export async function collectPluginExtensionImportBoundaryInventory() {
-  if (cachedInventoryPromise) {
-    return cachedInventoryPromise;
+  const files = (await collectTypeScriptFilesFromRoots(scanRoots))
+    .filter((filePath) => !shouldSkipFile(filePath))
+    .toSorted((left, right) => normalizePath(left).localeCompare(normalizePath(right)));
+
+  const inventory = [];
+  for (const filePath of files) {
+    const source = await fs.readFile(filePath, "utf8");
+    const sourceFile = ts.createSourceFile(
+      filePath,
+      source,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TS,
+    );
+    inventory.push(...scanImportBoundaryViolations(sourceFile, filePath));
+    inventory.push(...scanWebSearchRegistrySmells(sourceFile, filePath));
   }
 
-  cachedInventoryPromise = (async () => {
-    const files = (await collectTypeScriptFilesFromRoots(scanRoots))
-      .filter((filePath) => !shouldSkipFile(filePath))
-      .toSorted((left, right) => normalizePath(left).localeCompare(normalizePath(right)));
-
-    const inventory = [];
-    for (const filePath of files) {
-      const source = await fs.readFile(filePath, "utf8");
-      const sourceFile = ts.createSourceFile(
-        filePath,
-        source,
-        ts.ScriptTarget.Latest,
-        true,
-        ts.ScriptKind.TS,
-      );
-      inventory.push(...scanImportBoundaryViolations(sourceFile, filePath));
-      inventory.push(...scanWebSearchRegistrySmells(sourceFile, filePath));
-    }
-
-    return inventory.toSorted(compareEntries);
-  })();
-
-  try {
-    return await cachedInventoryPromise;
-  } catch (error) {
-    cachedInventoryPromise = null;
-    throw error;
-  }
+  return inventory.toSorted(compareEntries);
 }
 
 export async function readExpectedInventory() {
-  if (cachedExpectedInventoryPromise) {
-    return cachedExpectedInventoryPromise;
-  }
-
-  cachedExpectedInventoryPromise = fs
-    .readFile(baselinePath, "utf8")
-    .then((contents) => JSON.parse(contents));
-  try {
-    return await cachedExpectedInventoryPromise;
-  } catch (error) {
-    cachedExpectedInventoryPromise = null;
-    throw error;
-  }
+  return JSON.parse(await fs.readFile(baselinePath, "utf8"));
 }
 
 export function diffInventory(expected, actual) {
@@ -293,12 +262,7 @@ function formatEntry(entry) {
   return `${entry.file}:${entry.line} [${entry.kind}] ${entry.reason} (${entry.specifier} -> ${entry.resolvedPath})`;
 }
 
-function writeLine(stream, text) {
-  stream.write(`${text}\n`);
-}
-
-export async function runPluginExtensionImportBoundaryCheck(argv = process.argv.slice(2), io) {
-  const streams = io ?? { stdout: process.stdout, stderr: process.stderr };
+export async function main(argv = process.argv.slice(2)) {
   const json = argv.includes("--json");
   const actual = await collectPluginExtensionImportBoundaryInventory();
   const expected = await readExpectedInventory();
@@ -306,43 +270,33 @@ export async function runPluginExtensionImportBoundaryCheck(argv = process.argv.
   const matchesBaseline = missing.length === 0 && unexpected.length === 0;
 
   if (json) {
-    writeLine(streams.stdout, JSON.stringify(actual, null, 2));
+    process.stdout.write(`${JSON.stringify(actual, null, 2)}\n`);
   } else {
-    writeLine(streams.stdout, formatInventoryHuman(actual));
-    writeLine(
-      streams.stdout,
+    console.log(formatInventoryHuman(actual));
+    console.log(
       matchesBaseline
         ? `Baseline matches (${actual.length} entries).`
         : `Baseline mismatch (${unexpected.length} unexpected, ${missing.length} missing).`,
     );
     if (!matchesBaseline) {
       if (unexpected.length > 0) {
-        writeLine(streams.stderr, "Unexpected entries:");
+        console.error("Unexpected entries:");
         for (const entry of unexpected) {
-          writeLine(streams.stderr, `- ${formatEntry(entry)}`);
+          console.error(`- ${formatEntry(entry)}`);
         }
       }
       if (missing.length > 0) {
-        writeLine(streams.stderr, "Missing baseline entries:");
+        console.error("Missing baseline entries:");
         for (const entry of missing) {
-          writeLine(streams.stderr, `- ${formatEntry(entry)}`);
+          console.error(`- ${formatEntry(entry)}`);
         }
       }
     }
   }
 
   if (!matchesBaseline) {
-    return 1;
+    process.exit(1);
   }
-  return 0;
-}
-
-export async function main(argv = process.argv.slice(2), io) {
-  const exitCode = await runPluginExtensionImportBoundaryCheck(argv, io);
-  if (!io && exitCode !== 0) {
-    process.exit(exitCode);
-  }
-  return exitCode;
 }
 
 runAsScript(import.meta.url, main);

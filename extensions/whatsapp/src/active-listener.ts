@@ -1,7 +1,6 @@
 import { formatCliCommand } from "openclaw/plugin-sdk/cli-runtime";
 import type { PollInput } from "openclaw/plugin-sdk/media-runtime";
 import { DEFAULT_ACCOUNT_ID } from "openclaw/plugin-sdk/routing";
-import { resolveGlobalSingleton } from "openclaw/plugin-sdk/text-runtime";
 
 export type ActiveWebSendOptions = {
   gifPlayback?: boolean;
@@ -29,29 +28,34 @@ export type ActiveWebListener = {
   close?: () => Promise<void>;
 };
 
-// Use process-global symbol keys to survive bundler code-splitting and loader
-// cache splits without depending on fragile string property names.
-const WHATSAPP_ACTIVE_LISTENER_STATE_KEY = Symbol.for("openclaw.whatsapp.activeListenerState");
+// Use a process-level singleton to survive bundler code-splitting.
+// Rolldown duplicates this module across multiple output chunks, each with its
+// own module-scoped `listeners` Map. The WhatsApp provider writes to one chunk's
+// Map via setActiveWebListener(), but the outbound send path reads from a
+// different chunk's Map via requireActiveWebListener() — so the listener is
+// never found. Pinning the Map to globalThis ensures all chunks share one
+// instance.  See: https://github.com/openclaw/openclaw/issues/14406
+const GLOBAL_KEY = "__openclaw_wa_listeners" as const;
+const GLOBAL_CURRENT_KEY = "__openclaw_wa_current_listener" as const;
 
-type ActiveListenerState = {
-  listeners: Map<string, ActiveWebListener>;
-  current: ActiveWebListener | null;
+type GlobalWithListeners = typeof globalThis & {
+  [GLOBAL_KEY]?: Map<string, ActiveWebListener>;
+  [GLOBAL_CURRENT_KEY]?: ActiveWebListener | null;
 };
 
-const state = resolveGlobalSingleton<ActiveListenerState>(
-  WHATSAPP_ACTIVE_LISTENER_STATE_KEY,
-  () => ({
-    listeners: new Map<string, ActiveWebListener>(),
-    current: null,
-  }),
-);
+const _global = globalThis as GlobalWithListeners;
+
+_global[GLOBAL_KEY] ??= new Map<string, ActiveWebListener>();
+_global[GLOBAL_CURRENT_KEY] ??= null;
+
+const listeners = _global[GLOBAL_KEY];
 
 function getCurrentListener(): ActiveWebListener | null {
-  return state.current;
+  return _global[GLOBAL_CURRENT_KEY] ?? null;
 }
 
 function setCurrentListener(listener: ActiveWebListener | null): void {
-  state.current = listener;
+  _global[GLOBAL_CURRENT_KEY] = listener;
 }
 
 export function resolveWebAccountId(accountId?: string | null): string {
@@ -63,7 +67,7 @@ export function requireActiveWebListener(accountId?: string | null): {
   listener: ActiveWebListener;
 } {
   const id = resolveWebAccountId(accountId);
-  const listener = state.listeners.get(id) ?? null;
+  const listener = listeners.get(id) ?? null;
   if (!listener) {
     throw new Error(
       `No active WhatsApp Web listener (account: ${id}). Start the gateway, then link WhatsApp with: ${formatCliCommand(`openclaw channels login --channel whatsapp --account ${id}`)}.`,
@@ -91,9 +95,9 @@ export function setActiveWebListener(
 
   const id = resolveWebAccountId(accountId);
   if (!listener) {
-    state.listeners.delete(id);
+    listeners.delete(id);
   } else {
-    state.listeners.set(id, listener);
+    listeners.set(id, listener);
   }
   if (id === DEFAULT_ACCOUNT_ID) {
     setCurrentListener(listener);
@@ -102,5 +106,5 @@ export function setActiveWebListener(
 
 export function getActiveWebListener(accountId?: string | null): ActiveWebListener | null {
   const id = resolveWebAccountId(accountId);
-  return state.listeners.get(id) ?? null;
+  return listeners.get(id) ?? null;
 }

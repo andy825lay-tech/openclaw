@@ -4,27 +4,27 @@ import {
   HUGGINGFACE_MODEL_CATALOG,
 } from "openclaw/plugin-sdk/provider-models";
 import {
-  createModelCatalogPresetAppliers,
+  applyProviderConfigWithModelCatalogPreset,
   type OpenClawConfig,
 } from "openclaw/plugin-sdk/provider-onboard";
 
 export const HUGGINGFACE_DEFAULT_MODEL_REF = "huggingface/deepseek-ai/DeepSeek-R1";
 
-const huggingfacePresetAppliers = createModelCatalogPresetAppliers({
-  primaryModelRef: HUGGINGFACE_DEFAULT_MODEL_REF,
-  resolveParams: (_cfg: OpenClawConfig) => ({
+function applyHuggingfacePreset(cfg: OpenClawConfig, primaryModelRef?: string): OpenClawConfig {
+  return applyProviderConfigWithModelCatalogPreset(cfg, {
     providerId: "huggingface",
     api: "openai-completions",
     baseUrl: HUGGINGFACE_BASE_URL,
     catalogModels: HUGGINGFACE_MODEL_CATALOG.map(buildHuggingfaceModelDefinition),
     aliases: [{ modelRef: HUGGINGFACE_DEFAULT_MODEL_REF, alias: "Hugging Face" }],
-  }),
-});
+    primaryModelRef,
+  });
+}
 
 export function applyHuggingfaceProviderConfig(cfg: OpenClawConfig): OpenClawConfig {
-  return huggingfacePresetAppliers.applyProviderConfig(cfg);
+  return applyHuggingfacePreset(cfg);
 }
 
 export function applyHuggingfaceConfig(cfg: OpenClawConfig): OpenClawConfig {
-  return huggingfacePresetAppliers.applyConfig(cfg);
+  return applyHuggingfacePreset(cfg, HUGGINGFACE_DEFAULT_MODEL_REF);
 }

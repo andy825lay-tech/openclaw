@@ -12,7 +12,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { getClientManager } from "./client-manager-registry.js";
-import { resolveTwitchAccountContext } from "./config.js";
+import { getAccountConfig } from "./config.js";
 import { sendMessageTwitchInternal } from "./send.js";
 import {
   BASE_TWITCH_TEST_ACCOUNT,
@@ -20,15 +20,17 @@ import {
   makeTwitchTestConfig,
 } from "./test-fixtures.js";
 import { stripMarkdownForTwitch } from "./utils/markdown.js";
+import { isAccountConfigured } from "./utils/twitch.js";
 
 // Mock dependencies
 vi.mock("./config.js", () => ({
   DEFAULT_ACCOUNT_ID: "default",
-  resolveTwitchAccountContext: vi.fn(),
+  getAccountConfig: vi.fn(),
 }));
 
 vi.mock("./utils/twitch.js", () => ({
   generateMessageId: vi.fn(() => "test-msg-id"),
+  isAccountConfigured: vi.fn(() => true),
   normalizeTwitchChannel: (channel: string) => channel.toLowerCase().replace(/^#/, ""),
 }));
 
@@ -57,26 +59,16 @@ describe("send", () => {
   installTwitchTestHooks();
 
   describe("sendMessageTwitchInternal", () => {
-    function setupAccountContext(params?: {
-      account?: typeof mockAccount | null;
-      configured?: boolean;
-      availableAccountIds?: string[];
-    }) {
-      const account = params?.account === undefined ? mockAccount : params.account;
-      vi.mocked(resolveTwitchAccountContext).mockImplementation((_cfg, accountId) => ({
-        accountId: accountId?.trim() || "default",
-        account,
-        tokenResolution: { source: "config", token: account?.accessToken ?? "" },
-        configured: account ? (params?.configured ?? true) : false,
-        availableAccountIds: params?.availableAccountIds ?? ["default"],
-      }));
+    function setupBaseAccount(params?: { configured?: boolean }) {
+      vi.mocked(getAccountConfig).mockReturnValue(mockAccount);
+      vi.mocked(isAccountConfigured).mockReturnValue(params?.configured ?? true);
     }
 
     async function mockSuccessfulSend(params: {
       messageId: string;
       stripMarkdown?: (text: string) => string;
     }) {
-      setupAccountContext();
+      setupBaseAccount();
       vi.mocked(getClientManager).mockReturnValue({
         sendMessage: vi.fn().mockResolvedValue({
           ok: true,
@@ -125,7 +117,7 @@ describe("send", () => {
     });
 
     it("should return error when account not found", async () => {
-      setupAccountContext({ account: null });
+      vi.mocked(getAccountConfig).mockReturnValue(null);
 
       const result = await sendMessageTwitchInternal(
         "#testchannel",
@@ -141,7 +133,7 @@ describe("send", () => {
     });
 
     it("should return error when account not configured", async () => {
-      setupAccountContext({ configured: false });
+      setupBaseAccount({ configured: false });
 
       const result = await sendMessageTwitchInternal(
         "#testchannel",
@@ -162,7 +154,8 @@ describe("send", () => {
         ...mockAccount,
         channel: undefined as unknown as string,
       };
-      setupAccountContext({ account: accountWithoutChannel });
+      vi.mocked(getAccountConfig).mockReturnValue(accountWithoutChannel);
+      vi.mocked(isAccountConfigured).mockReturnValue(true);
 
       const result = await sendMessageTwitchInternal(
         "",
@@ -178,7 +171,7 @@ describe("send", () => {
     });
 
     it("should skip sending empty message after markdown stripping", async () => {
-      setupAccountContext();
+      setupBaseAccount();
       vi.mocked(stripMarkdownForTwitch).mockReturnValue("");
 
       const result = await sendMessageTwitchInternal(
@@ -195,7 +188,7 @@ describe("send", () => {
     });
 
     it("should return error when client manager not found", async () => {
-      setupAccountContext();
+      setupBaseAccount();
       vi.mocked(getClientManager).mockReturnValue(undefined);
 
       const result = await sendMessageTwitchInternal(
@@ -212,7 +205,7 @@ describe("send", () => {
     });
 
     it("should handle send errors gracefully", async () => {
-      setupAccountContext();
+      setupBaseAccount();
       vi.mocked(getClientManager).mockReturnValue({
         sendMessage: vi.fn().mockRejectedValue(new Error("Connection lost")),
       } as unknown as ReturnType<typeof getClientManager>);
@@ -232,7 +225,7 @@ describe("send", () => {
     });
 
     it("should use account channel when channel parameter is empty", async () => {
-      setupAccountContext();
+      setupBaseAccount();
       const mockSend = vi.fn().mockResolvedValue({
         ok: true,
         messageId: "twitch-msg-789",

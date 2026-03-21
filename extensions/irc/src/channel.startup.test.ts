@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   expectStopPendingUntilAbort,
   startAccountAndTrackLifecycle,
-  waitForStartedMocks,
 } from "../../../test/helpers/extensions/start-account-lifecycle.js";
 import type { ResolvedIrcAccount } from "./accounts.js";
 
@@ -20,24 +19,6 @@ vi.mock("./monitor.js", async () => {
 
 import { ircPlugin } from "./channel.js";
 
-function buildAccount(): ResolvedIrcAccount {
-  return {
-    accountId: "default",
-    enabled: true,
-    name: "default",
-    configured: true,
-    host: "irc.example.com",
-    port: 6697,
-    tls: true,
-    nick: "openclaw",
-    username: "openclaw",
-    realname: "OpenClaw",
-    password: "",
-    passwordSource: "none",
-    config: {} as ResolvedIrcAccount["config"],
-  };
-}
-
 describe("ircPlugin gateway.startAccount", () => {
   afterEach(() => {
     vi.clearAllMocks();
@@ -47,13 +28,32 @@ describe("ircPlugin gateway.startAccount", () => {
     const stop = vi.fn();
     hoisted.monitorIrcProvider.mockResolvedValue({ stop });
 
+    const account: ResolvedIrcAccount = {
+      accountId: "default",
+      enabled: true,
+      name: "default",
+      configured: true,
+      host: "irc.example.com",
+      port: 6697,
+      tls: true,
+      nick: "openclaw",
+      username: "openclaw",
+      realname: "OpenClaw",
+      password: "",
+      passwordSource: "none",
+      config: {} as ResolvedIrcAccount["config"],
+    };
+
     const { abort, task, isSettled } = startAccountAndTrackLifecycle({
       startAccount: ircPlugin.gateway!.startAccount!,
-      account: buildAccount(),
+      account,
     });
 
     await expectStopPendingUntilAbort({
-      waitForStarted: waitForStartedMocks(hoisted.monitorIrcProvider),
+      waitForStarted: () =>
+        vi.waitFor(() => {
+          expect(hoisted.monitorIrcProvider).toHaveBeenCalledOnce();
+        }),
       isSettled,
       abort,
       task,

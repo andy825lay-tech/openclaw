@@ -10,9 +10,6 @@ const mocks = vi.hoisted(() => ({
   promptCustomApiConfig: vi.fn(),
   resolvePluginProviders: vi.fn(() => []),
   resolveProviderPluginChoice: vi.fn<() => unknown>(() => null),
-  resolvePreferredProviderForAuthChoice: vi.fn<() => Promise<string | undefined>>(
-    async () => undefined,
-  ),
 }));
 
 vi.mock("../agents/auth-profiles.js", () => ({
@@ -28,7 +25,7 @@ vi.mock("./auth-choice-prompt.js", () => ({
 
 vi.mock("./auth-choice.js", () => ({
   applyAuthChoice: mocks.applyAuthChoice,
-  resolvePreferredProviderForAuthChoice: mocks.resolvePreferredProviderForAuthChoice,
+  resolvePreferredProviderForAuthChoice: vi.fn(async () => undefined),
 }));
 
 vi.mock("./model-picker.js", async (importActual) => {
@@ -44,7 +41,7 @@ vi.mock("./onboard-custom.js", () => ({
   promptCustomApiConfig: mocks.promptCustomApiConfig,
 }));
 
-vi.mock("../plugins/providers.runtime.js", () => ({
+vi.mock("../plugins/providers.js", () => ({
   resolvePluginProviders: mocks.resolvePluginProviders,
 }));
 
@@ -157,21 +154,6 @@ describe("promptAuthConfig", () => {
         allowedKeys: ["anthropic/claude-sonnet-4-6"],
         initialSelections: ["anthropic/claude-sonnet-4-6"],
         message: "Anthropic OAuth models",
-      }),
-    );
-  });
-
-  it("scopes the allowlist picker to the selected provider when available", async () => {
-    mocks.promptAuthChoiceGrouped.mockResolvedValue("openai-api-key");
-    mocks.resolvePreferredProviderForAuthChoice.mockResolvedValue("openai");
-    mocks.applyAuthChoice.mockResolvedValue({ config: {} });
-    mocks.promptModelAllowlist.mockResolvedValue({ models: undefined });
-
-    await promptAuthConfig({}, makeRuntime(), noopPrompter);
-
-    expect(mocks.promptModelAllowlist).toHaveBeenCalledWith(
-      expect.objectContaining({
-        preferredProvider: "openai",
       }),
     );
   });

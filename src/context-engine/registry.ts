@@ -1,6 +1,5 @@
 import type { OpenClawConfig } from "../config/config.js";
 import { defaultSlotIdForKey } from "../plugins/slots.js";
-import { resolveGlobalSingleton } from "../shared/global-singleton.js";
 import type { ContextEngine } from "./types.js";
 
 /**
@@ -17,31 +16,17 @@ type RegisterContextEngineForOwnerOptions = {
 const LEGACY_SESSION_KEY_COMPAT = Symbol.for("openclaw.contextEngine.sessionKeyCompat");
 const SESSION_KEY_COMPAT_METHODS = [
   "bootstrap",
-  "maintain",
   "ingest",
   "ingestBatch",
   "afterTurn",
   "assemble",
   "compact",
 ] as const;
-const LEGACY_COMPAT_PARAMS = ["sessionKey", "prompt"] as const;
-const LEGACY_COMPAT_METHOD_KEYS = {
-  bootstrap: ["sessionKey"],
-  maintain: ["sessionKey"],
-  ingest: ["sessionKey"],
-  ingestBatch: ["sessionKey"],
-  afterTurn: ["sessionKey"],
-  assemble: ["sessionKey", "prompt"],
-  compact: ["sessionKey"],
-} as const;
 
 type SessionKeyCompatMethodName = (typeof SESSION_KEY_COMPAT_METHODS)[number];
 type SessionKeyCompatParams = {
   sessionKey?: string;
-  prompt?: string;
 };
-type LegacyCompatKey = (typeof LEGACY_COMPAT_PARAMS)[number];
-type LegacyCompatParamMap = Partial<Record<LegacyCompatKey, unknown>>;
 
 function isSessionKeyCompatMethodName(value: PropertyKey): value is SessionKeyCompatMethodName {
   return (
@@ -49,29 +34,21 @@ function isSessionKeyCompatMethodName(value: PropertyKey): value is SessionKeyCo
   );
 }
 
-function hasOwnLegacyCompatKey<K extends LegacyCompatKey>(
-  params: unknown,
-  key: K,
-): params is SessionKeyCompatParams & Required<Pick<LegacyCompatParamMap, K>> {
+function hasOwnSessionKey(params: unknown): params is SessionKeyCompatParams {
   return (
     params !== null &&
     typeof params === "object" &&
-    Object.prototype.hasOwnProperty.call(params, key)
+    Object.prototype.hasOwnProperty.call(params, "sessionKey")
   );
 }
 
-function withoutLegacyCompatKeys<T extends SessionKeyCompatParams>(
-  params: T,
-  keys: Iterable<LegacyCompatKey>,
-): T {
+function withoutSessionKey<T extends SessionKeyCompatParams>(params: T): T {
   const legacyParams = { ...params };
-  for (const key of keys) {
-    delete legacyParams[key];
-  }
+  delete legacyParams.sessionKey;
   return legacyParams;
 }
 
-function issueRejectsLegacyCompatKeyStrictly(issue: unknown, key: LegacyCompatKey): boolean {
+function issueRejectsSessionKeyStrictly(issue: unknown): boolean {
   if (!issue || typeof issue !== "object") {
     return false;
   }
@@ -84,12 +61,12 @@ function issueRejectsLegacyCompatKeyStrictly(issue: unknown, key: LegacyCompatKe
   if (
     issueRecord.code === "unrecognized_keys" &&
     Array.isArray(issueRecord.keys) &&
-    issueRecord.keys.some((issueKey) => issueKey === key)
+    issueRecord.keys.some((key) => key === "sessionKey")
   ) {
     return true;
   }
 
-  return isLegacyCompatErrorForKey(issueRecord.message, key);
+  return isSessionKeyCompatibilityError(issueRecord.message);
 }
 
 function* iterateErrorChain(error: unknown) {
@@ -105,45 +82,31 @@ function* iterateErrorChain(error: unknown) {
   }
 }
 
-const LEGACY_UNKNOWN_FIELD_PATTERNS: Record<LegacyCompatKey, readonly RegExp[]> = {
-  sessionKey: [
-    /\bunrecognized key(?:\(s\)|s)? in object:.*['"`]sessionKey['"`]/i,
-    /\badditional propert(?:y|ies)\b.*['"`]sessionKey['"`]/i,
-    /\bmust not have additional propert(?:y|ies)\b.*['"`]sessionKey['"`]/i,
-    /\b(?:unexpected|extraneous)\s+(?:property|properties|field|fields|key|keys)\b.*['"`]sessionKey['"`]/i,
-    /\b(?:unknown|invalid)\s+(?:property|properties|field|fields|key|keys)\b.*['"`]sessionKey['"`]/i,
-    /['"`]sessionKey['"`].*\b(?:was|is)\s+not allowed\b/i,
-    /"code"\s*:\s*"unrecognized_keys"[^]*"sessionKey"/i,
-  ],
-  prompt: [
-    /\bunrecognized key(?:\(s\)|s)? in object:.*['"`]prompt['"`]/i,
-    /\badditional propert(?:y|ies)\b.*['"`]prompt['"`]/i,
-    /\bmust not have additional propert(?:y|ies)\b.*['"`]prompt['"`]/i,
-    /\b(?:unexpected|extraneous)\s+(?:property|properties|field|fields|key|keys)\b.*['"`]prompt['"`]/i,
-    /\b(?:unknown|invalid)\s+(?:property|properties|field|fields|key|keys)\b.*['"`]prompt['"`]/i,
-    /['"`]prompt['"`].*\b(?:was|is)\s+not allowed\b/i,
-    /"code"\s*:\s*"unrecognized_keys"[^]*"prompt"/i,
-  ],
-} as const;
+const SESSION_KEY_UNKNOWN_FIELD_PATTERNS = [
+  /\bunrecognized key(?:\(s\)|s)? in object:.*['"`]sessionKey['"`]/i,
+  /\badditional propert(?:y|ies)\b.*['"`]sessionKey['"`]/i,
+  /\bmust not have additional propert(?:y|ies)\b.*['"`]sessionKey['"`]/i,
+  /\b(?:unexpected|extraneous)\s+(?:property|properties|field|fields|key|keys)\b.*['"`]sessionKey['"`]/i,
+  /\b(?:unknown|invalid)\s+(?:property|properties|field|fields|key|keys)\b.*['"`]sessionKey['"`]/i,
+  /['"`]sessionKey['"`].*\b(?:was|is)\s+not allowed\b/i,
+  /"code"\s*:\s*"unrecognized_keys"[^]*"sessionKey"/i,
+] as const;
 
-function isLegacyCompatUnknownFieldValidationMessage(
-  message: string,
-  key: LegacyCompatKey,
-): boolean {
-  return LEGACY_UNKNOWN_FIELD_PATTERNS[key].some((pattern) => pattern.test(message));
+function isSessionKeyUnknownFieldValidationMessage(message: string): boolean {
+  return SESSION_KEY_UNKNOWN_FIELD_PATTERNS.some((pattern) => pattern.test(message));
 }
 
-function isLegacyCompatErrorForKey(error: unknown, key: LegacyCompatKey): boolean {
+function isSessionKeyCompatibilityError(error: unknown): boolean {
   for (const candidate of iterateErrorChain(error)) {
     if (Array.isArray(candidate)) {
-      if (candidate.some((entry) => issueRejectsLegacyCompatKeyStrictly(entry, key))) {
+      if (candidate.some((entry) => issueRejectsSessionKeyStrictly(entry))) {
         return true;
       }
       continue;
     }
 
     if (typeof candidate === "string") {
-      if (isLegacyCompatUnknownFieldValidationMessage(candidate, key)) {
+      if (isSessionKeyUnknownFieldValidationMessage(candidate)) {
         return true;
       }
       continue;
@@ -161,21 +124,21 @@ function isLegacyCompatErrorForKey(error: unknown, key: LegacyCompatKey): boolea
 
     if (
       Array.isArray(issueContainer.issues) &&
-      issueContainer.issues.some((issue) => issueRejectsLegacyCompatKeyStrictly(issue, key))
+      issueContainer.issues.some((issue) => issueRejectsSessionKeyStrictly(issue))
     ) {
       return true;
     }
 
     if (
       Array.isArray(issueContainer.errors) &&
-      issueContainer.errors.some((issue) => issueRejectsLegacyCompatKeyStrictly(issue, key))
+      issueContainer.errors.some((issue) => issueRejectsSessionKeyStrictly(issue))
     ) {
       return true;
     }
 
     if (
       typeof issueContainer.message === "string" &&
-      isLegacyCompatUnknownFieldValidationMessage(issueContainer.message, key)
+      isSessionKeyUnknownFieldValidationMessage(issueContainer.message)
     ) {
       return true;
     }
@@ -184,66 +147,25 @@ function isLegacyCompatErrorForKey(error: unknown, key: LegacyCompatKey): boolea
   return false;
 }
 
-function detectRejectedLegacyCompatKeys(
-  error: unknown,
-  allowedKeys: readonly LegacyCompatKey[],
-): Set<LegacyCompatKey> {
-  const rejectedKeys = new Set<LegacyCompatKey>();
-  for (const key of allowedKeys) {
-    if (isLegacyCompatErrorForKey(error, key)) {
-      rejectedKeys.add(key);
-    }
-  }
-  return rejectedKeys;
-}
-
-async function invokeWithLegacyCompat<TResult, TParams extends SessionKeyCompatParams>(
+async function invokeWithLegacySessionKeyCompat<TResult, TParams extends SessionKeyCompatParams>(
   method: (params: TParams) => Promise<TResult> | TResult,
   params: TParams,
-  allowedKeys: readonly LegacyCompatKey[],
   opts?: {
     onLegacyModeDetected?: () => void;
-    onLegacyKeysDetected?: (keys: Set<LegacyCompatKey>) => void;
-    rejectedKeys?: ReadonlySet<LegacyCompatKey>;
   },
 ): Promise<TResult> {
-  const activeRejectedKeys = new Set(opts?.rejectedKeys ?? []);
-  const availableKeys = allowedKeys.filter((key) => hasOwnLegacyCompatKey(params, key));
-  if (availableKeys.length === 0) {
+  if (!hasOwnSessionKey(params)) {
     return await method(params);
   }
 
-  let currentParams =
-    activeRejectedKeys.size > 0 ? withoutLegacyCompatKeys(params, activeRejectedKeys) : params;
-
   try {
-    return await method(currentParams);
+    return await method(params);
   } catch (error) {
-    let currentError = error;
-    while (true) {
-      const rejectedKeys = detectRejectedLegacyCompatKeys(currentError, availableKeys);
-      let learnedNewKey = false;
-      for (const key of rejectedKeys) {
-        if (!activeRejectedKeys.has(key)) {
-          activeRejectedKeys.add(key);
-          learnedNewKey = true;
-        }
-      }
-
-      if (!learnedNewKey) {
-        throw currentError;
-      }
-
-      opts?.onLegacyModeDetected?.();
-      opts?.onLegacyKeysDetected?.(rejectedKeys);
-      currentParams = withoutLegacyCompatKeys(params, activeRejectedKeys);
-
-      try {
-        return await method(currentParams);
-      } catch (retryError) {
-        currentError = retryError;
-      }
+    if (!isSessionKeyCompatibilityError(error)) {
+      throw error;
     }
+    opts?.onLegacyModeDetected?.();
+    return await method(withoutSessionKey(params));
   }
 }
 
@@ -256,7 +178,6 @@ function wrapContextEngineWithSessionKeyCompat(engine: ContextEngine): ContextEn
   }
 
   let isLegacy = false;
-  const rejectedKeys = new Set<LegacyCompatKey>();
   const proxy: ContextEngine = new Proxy(engine, {
     get(target, property, receiver) {
       if (property === LEGACY_SESSION_KEY_COMPAT) {
@@ -274,23 +195,13 @@ function wrapContextEngineWithSessionKeyCompat(engine: ContextEngine): ContextEn
 
       return (params: SessionKeyCompatParams) => {
         const method = value.bind(target) as (params: SessionKeyCompatParams) => unknown;
-        const allowedKeys = LEGACY_COMPAT_METHOD_KEYS[property];
-        if (
-          isLegacy &&
-          allowedKeys.some((key) => rejectedKeys.has(key) && hasOwnLegacyCompatKey(params, key))
-        ) {
-          return method(withoutLegacyCompatKeys(params, rejectedKeys));
+        if (isLegacy && hasOwnSessionKey(params)) {
+          return method(withoutSessionKey(params));
         }
-        return invokeWithLegacyCompat(method, params, allowedKeys, {
+        return invokeWithLegacySessionKeyCompat(method, params, {
           onLegacyModeDetected: () => {
             isLegacy = true;
           },
-          onLegacyKeysDetected: (keys) => {
-            for (const key of keys) {
-              rejectedKeys.add(key);
-            }
-          },
-          rejectedKeys,
         });
       };
     },
@@ -318,15 +229,16 @@ type ContextEngineRegistryState = {
 
 // Keep context-engine registrations process-global so duplicated dist chunks
 // still share one registry map at runtime.
-const contextEngineRegistryState = resolveGlobalSingleton<ContextEngineRegistryState>(
-  CONTEXT_ENGINE_REGISTRY_STATE,
-  () => ({
-    engines: new Map(),
-  }),
-);
-
 function getContextEngineRegistryState(): ContextEngineRegistryState {
-  return contextEngineRegistryState;
+  const globalState = globalThis as typeof globalThis & {
+    [CONTEXT_ENGINE_REGISTRY_STATE]?: ContextEngineRegistryState;
+  };
+  if (!globalState[CONTEXT_ENGINE_REGISTRY_STATE]) {
+    globalState[CONTEXT_ENGINE_REGISTRY_STATE] = {
+      engines: new Map(),
+    };
+  }
+  return globalState[CONTEXT_ENGINE_REGISTRY_STATE];
 }
 
 function requireContextEngineOwner(owner: string): string {

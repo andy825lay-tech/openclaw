@@ -567,22 +567,9 @@ describe("gateway hot reload", () => {
 
   it("fails startup when an active exec ref id contains traversal segments", async () => {
     await writeGatewayTraversalExecRefConfig();
-    const previousGatewayAuth = testState.gatewayAuth;
-    const previousGatewayTokenEnv = process.env.OPENCLAW_GATEWAY_TOKEN;
-    testState.gatewayAuth = undefined;
-    delete process.env.OPENCLAW_GATEWAY_TOKEN;
-    try {
-      await expect(withGatewayServer(async () => {})).rejects.toThrow(
-        /must not include "\." or "\.\." path segments/i,
-      );
-    } finally {
-      testState.gatewayAuth = previousGatewayAuth;
-      if (previousGatewayTokenEnv === undefined) {
-        delete process.env.OPENCLAW_GATEWAY_TOKEN;
-      } else {
-        process.env.OPENCLAW_GATEWAY_TOKEN = previousGatewayTokenEnv;
-      }
-    }
+    await expect(withGatewayServer(async () => {})).rejects.toThrow(
+      /must not include "\." or "\.\." path segments/i,
+    );
   });
 
   it("allows startup when unresolved refs exist only on disabled surfaces", async () => {

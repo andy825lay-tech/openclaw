@@ -143,18 +143,18 @@ describe("resolveSessionResetPolicy", () => {
         resetType: "group",
       });
 
-      expect(groupPolicy.mode).toBe("daily");
+      expect(groupPolicy.mode).toBe("idle");
     });
   });
 
-  it("defaults to daily resets at 4am local time", () => {
+  it("defaults idle resets to zero idle minutes so sessions do not auto reset", () => {
     const policy = resolveSessionResetPolicy({
       resetType: "direct",
     });
 
     expect(policy).toMatchObject({
-      mode: "daily",
-      atHour: 4,
+      mode: "idle",
+      idleMinutes: 0,
     });
   });
 

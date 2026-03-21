@@ -1,9 +1,7 @@
 import { Type } from "@sinclair/typebox";
 import {
   enablePluginInConfig,
-  getScopedCredentialValue,
   resolveProviderWebSearchPluginConfig,
-  setScopedCredentialValue,
   setProviderWebSearchPluginConfigValue,
   type WebSearchProviderPlugin,
 } from "openclaw/plugin-sdk/provider-web-search";
@@ -23,12 +21,31 @@ const GenericFirecrawlSearchSchema = Type.Object(
   { additionalProperties: false },
 );
 
+function getScopedCredentialValue(searchConfig?: Record<string, unknown>): unknown {
+  const scoped = searchConfig?.firecrawl;
+  if (!scoped || typeof scoped !== "object" || Array.isArray(scoped)) {
+    return undefined;
+  }
+  return (scoped as Record<string, unknown>).apiKey;
+}
+
+function setScopedCredentialValue(
+  searchConfigTarget: Record<string, unknown>,
+  value: unknown,
+): void {
+  const scoped = searchConfigTarget.firecrawl;
+  if (!scoped || typeof scoped !== "object" || Array.isArray(scoped)) {
+    searchConfigTarget.firecrawl = { apiKey: value };
+    return;
+  }
+  (scoped as Record<string, unknown>).apiKey = value;
+}
+
 export function createFirecrawlWebSearchProvider(): WebSearchProviderPlugin {
   return {
     id: "firecrawl",
     label: "Firecrawl Search",
     hint: "Structured results with optional result scraping",
-    credentialLabel: "Firecrawl API key",
     envVars: ["FIRECRAWL_API_KEY"],
     placeholder: "fc-...",
     signupUrl: "https://www.firecrawl.dev/",
@@ -36,9 +53,8 @@ export function createFirecrawlWebSearchProvider(): WebSearchProviderPlugin {
     autoDetectOrder: 60,
     credentialPath: "plugins.entries.firecrawl.config.webSearch.apiKey",
     inactiveSecretPaths: ["plugins.entries.firecrawl.config.webSearch.apiKey"],
-    getCredentialValue: (searchConfig) => getScopedCredentialValue(searchConfig, "firecrawl"),
-    setCredentialValue: (searchConfigTarget, value) =>
-      setScopedCredentialValue(searchConfigTarget, "firecrawl", value),
+    getCredentialValue: getScopedCredentialValue,
+    setCredentialValue: setScopedCredentialValue,
     getConfiguredCredentialValue: (config) =>
       resolveProviderWebSearchPluginConfig(config, "firecrawl")?.apiKey,
     setConfiguredCredentialValue: (configTarget, value) => {

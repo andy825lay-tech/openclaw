@@ -1,5 +1,5 @@
 import {
-  createDefaultModelsPresetAppliers,
+  applyProviderConfigWithDefaultModelsPreset,
   type ModelApi,
   type OpenClawConfig,
 } from "openclaw/plugin-sdk/provider-onboard";
@@ -37,25 +37,23 @@ function resolveQianfanPreset(cfg: OpenClawConfig): {
   };
 }
 
-const qianfanPresetAppliers = createDefaultModelsPresetAppliers({
-  primaryModelRef: QIANFAN_DEFAULT_MODEL_REF,
-  resolveParams: (cfg: OpenClawConfig) => {
-    const preset = resolveQianfanPreset(cfg);
-    return {
-      providerId: "qianfan",
-      api: preset.api,
-      baseUrl: preset.baseUrl,
-      defaultModels: preset.defaultModels,
-      defaultModelId: QIANFAN_DEFAULT_MODEL_ID,
-      aliases: [{ modelRef: QIANFAN_DEFAULT_MODEL_REF, alias: "QIANFAN" }],
-    };
-  },
-});
+function applyQianfanPreset(cfg: OpenClawConfig, primaryModelRef?: string): OpenClawConfig {
+  const preset = resolveQianfanPreset(cfg);
+  return applyProviderConfigWithDefaultModelsPreset(cfg, {
+    providerId: "qianfan",
+    api: preset.api,
+    baseUrl: preset.baseUrl,
+    defaultModels: preset.defaultModels,
+    defaultModelId: QIANFAN_DEFAULT_MODEL_ID,
+    aliases: [{ modelRef: QIANFAN_DEFAULT_MODEL_REF, alias: "QIANFAN" }],
+    primaryModelRef,
+  });
+}
 
 export function applyQianfanProviderConfig(cfg: OpenClawConfig): OpenClawConfig {
-  return qianfanPresetAppliers.applyProviderConfig(cfg);
+  return applyQianfanPreset(cfg);
 }
 
 export function applyQianfanConfig(cfg: OpenClawConfig): OpenClawConfig {
-  return qianfanPresetAppliers.applyConfig(cfg);
+  return applyQianfanPreset(cfg, QIANFAN_DEFAULT_MODEL_REF);
 }

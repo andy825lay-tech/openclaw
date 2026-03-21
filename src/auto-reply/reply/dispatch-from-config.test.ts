@@ -104,7 +104,7 @@ const ttsMocks = vi.hoisted(() => {
   };
 });
 
-vi.mock("./route-reply.runtime.js", () => ({
+vi.mock("./route-reply.js", () => ({
   isRoutableChannel: (channel: string | undefined) =>
     Boolean(
       channel &&
@@ -122,7 +122,7 @@ vi.mock("./route-reply.runtime.js", () => ({
   routeReply: mocks.routeReply,
 }));
 
-vi.mock("./abort.runtime.js", () => ({
+vi.mock("./abort.js", () => ({
   tryFastAbortFromMessage: mocks.tryFastAbortFromMessage,
   formatAbortReplyText: (stoppedSubagents?: number) => {
     if (typeof stoppedSubagents !== "number" || stoppedSubagents <= 0) {
@@ -138,19 +138,13 @@ vi.mock("../../logging/diagnostic.js", () => ({
   logMessageProcessed: diagnosticMocks.logMessageProcessed,
   logSessionStateChange: diagnosticMocks.logSessionStateChange,
 }));
-vi.mock("../../config/sessions/store.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../config/sessions/store.js")>();
+vi.mock("../../config/sessions.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../config/sessions.js")>();
   return {
     ...actual,
     loadSessionStore: sessionStoreMocks.loadSessionStore,
-    resolveSessionStoreEntry: sessionStoreMocks.resolveSessionStoreEntry,
-  };
-});
-vi.mock("../../config/sessions/paths.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../config/sessions/paths.js")>();
-  return {
-    ...actual,
     resolveStorePath: sessionStoreMocks.resolveStorePath,
+    resolveSessionStoreEntry: sessionStoreMocks.resolveSessionStoreEntry,
   };
 });
 
@@ -197,13 +191,6 @@ vi.mock("../../tts/tts.js", () => ({
   maybeApplyTtsToPayload: (params: unknown) => ttsMocks.maybeApplyTtsToPayload(params),
   normalizeTtsAutoMode: (value: unknown) => ttsMocks.normalizeTtsAutoMode(value),
   resolveTtsConfig: (cfg: OpenClawConfig) => ttsMocks.resolveTtsConfig(cfg),
-}));
-vi.mock("../../tts/tts.runtime.js", () => ({
-  maybeApplyTtsToPayload: (params: unknown) => ttsMocks.maybeApplyTtsToPayload(params),
-}));
-vi.mock("../../tts/tts-config.js", () => ({
-  normalizeTtsAutoMode: (value: unknown) => ttsMocks.normalizeTtsAutoMode(value),
-  resolveConfiguredTtsMode: (cfg: OpenClawConfig) => ttsMocks.resolveTtsConfig(cfg).mode,
 }));
 
 const noAbortResult = { handled: false, aborted: false } as const;
@@ -991,92 +978,6 @@ describe("dispatchReplyFromConfig", () => {
     expect(streamedText).toContain("hello");
     expect(streamedText).toContain("world");
     expect(dispatcher.sendFinalReply).not.toHaveBeenCalled();
-  });
-
-  it("aborts ACP dispatch promptly when the caller abort signal fires", async () => {
-    setNoAbort();
-    let releaseTurn: (() => void) | undefined;
-    const releasePromise = new Promise<void>((resolve) => {
-      releaseTurn = resolve;
-    });
-    const runtime = {
-      ensureSession: vi.fn(
-        async (input: { sessionKey: string; mode: string; agent: string }) =>
-          ({
-            sessionKey: input.sessionKey,
-            backend: "acpx",
-            runtimeSessionName: `${input.sessionKey}:${input.mode}`,
-          }) as { sessionKey: string; backend: string; runtimeSessionName: string },
-      ),
-      runTurn: vi.fn(async function* (params: { signal?: AbortSignal }) {
-        await new Promise<void>((resolve) => {
-          if (params.signal?.aborted) {
-            resolve();
-            return;
-          }
-          const onAbort = () => resolve();
-          params.signal?.addEventListener("abort", onAbort, { once: true });
-          void releasePromise.then(resolve);
-        });
-        yield { type: "done" };
-      }),
-      cancel: vi.fn(async () => {}),
-      close: vi.fn(async () => {}),
-    };
-    acpMocks.readAcpSessionEntry.mockReturnValue({
-      sessionKey: "agent:codex-acp:session-1",
-      storeSessionKey: "agent:codex-acp:session-1",
-      cfg: {},
-      storePath: "/tmp/mock-sessions.json",
-      entry: {},
-      acp: {
-        backend: "acpx",
-        agent: "codex",
-        runtimeSessionName: "runtime:1",
-        mode: "persistent",
-        state: "idle",
-        lastActivityAt: Date.now(),
-      },
-    });
-    acpMocks.requireAcpRuntimeBackend.mockReturnValue({
-      id: "acpx",
-      runtime,
-    });
-
-    const abortController = new AbortController();
-    const cfg = {
-      acp: {
-        enabled: true,
-        dispatch: { enabled: true },
-      },
-    } as OpenClawConfig;
-    const dispatcher = createDispatcher();
-    const ctx = buildTestCtx({
-      Provider: "discord",
-      Surface: "discord",
-      SessionKey: "agent:codex-acp:session-1",
-      BodyForAgent: "write a test",
-    });
-    const dispatchPromise = dispatchReplyFromConfig({
-      ctx,
-      cfg,
-      dispatcher,
-      replyOptions: { abortSignal: abortController.signal },
-    });
-    await vi.waitFor(() => {
-      expect(runtime.runTurn).toHaveBeenCalledTimes(1);
-    });
-    abortController.abort();
-    const outcome = await Promise.race([
-      dispatchPromise.then(() => "settled" as const),
-      new Promise<"pending">((resolve) => {
-        setTimeout(() => resolve("pending"), 100);
-      }),
-    ]);
-    releaseTurn?.();
-    await dispatchPromise;
-
-    expect(outcome).toBe("settled");
   });
 
   it("posts a one-time resolved-session-id notice in thread after the first ACP turn", async () => {

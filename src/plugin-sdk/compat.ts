@@ -8,11 +8,11 @@ const shouldWarnCompatImport =
 
 if (shouldWarnCompatImport) {
   process.emitWarning(
-    "openclaw/plugin-sdk/compat is deprecated for new plugins. Migrate to focused openclaw/plugin-sdk/<subpath> imports. See https://docs.openclaw.ai/plugins/sdk-migration",
+    "openclaw/plugin-sdk/compat is deprecated for new plugins. Migrate to focused openclaw/plugin-sdk/<subpath> imports.",
     {
       code: "OPENCLAW_PLUGIN_SDK_COMPAT_DEPRECATED",
       detail:
-        "Bundled plugins must use scoped plugin-sdk subpaths. External plugins may keep compat temporarily while migrating. Migration guide: https://docs.openclaw.ai/plugins/sdk-migration",
+        "Bundled plugins must use scoped plugin-sdk subpaths. External plugins may keep compat temporarily while migrating.",
     },
   );
 }
@@ -20,8 +20,6 @@ if (shouldWarnCompatImport) {
 export { emptyPluginConfigSchema } from "../plugins/config-schema.js";
 export { resolveControlCommandGate } from "../channels/command-gating.js";
 export { delegateCompactionToRuntime } from "../context-engine/delegate.js";
-export type { DiagnosticEventPayload } from "../infra/diagnostic-events.js";
-export { onDiagnosticEvent } from "../infra/diagnostic-events.js";
 
 export { createAccountStatusSink } from "./channel-lifecycle.js";
 export { createPluginRuntimeStore } from "./runtime-store.js";
@@ -43,7 +41,7 @@ export * from "./channel-config-schema.js";
 export * from "./channel-policy.js";
 export * from "./reply-history.js";
 export * from "./directory-runtime.js";
-export { mapAllowlistResolutionInputs } from "./allow-from.js";
+export { mapAllowlistResolutionInputs } from "./allowlist-resolution.js";
 
 export {
   resolveBlueBubblesGroupRequireMention,

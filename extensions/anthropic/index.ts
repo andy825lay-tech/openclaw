@@ -5,7 +5,7 @@ import {
   type ProviderAuthContext,
   type ProviderResolveDynamicModelContext,
   type ProviderRuntimeModel,
-} from "openclaw/plugin-sdk/plugin-entry";
+} from "openclaw/plugin-sdk/core";
 import {
   CLAUDE_CLI_PROFILE_ID,
   applyAuthProfileConfig,

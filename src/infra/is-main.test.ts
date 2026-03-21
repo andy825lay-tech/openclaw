@@ -78,15 +78,15 @@ describe("isMainModule", () => {
     ).toBe(false);
   });
 
-  it("returns false for another entrypoint with the same basename", () => {
+  it("falls back to basename matching for relative or symlinked entrypoints", () => {
     expect(
       isMainModule({
-        currentFile: "/repo/node_modules/openclaw/dist/index.js",
-        argv: ["node", "/repo/dist/index.js"],
-        cwd: "/repo",
+        currentFile: "/repo/dist/index.js",
+        argv: ["node", "../other/index.js"],
+        cwd: "/repo/dist",
         env: {},
       }),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it("returns false when no entrypoint candidate exists", () => {

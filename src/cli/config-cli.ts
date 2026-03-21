@@ -18,7 +18,7 @@ import {
 import { validateConfigObjectRaw } from "../config/validation.js";
 import { SecretProviderSchema } from "../config/zod-schema.core.js";
 import { danger, info, success } from "../globals.js";
-import { type RuntimeEnv, writeRuntimeJson } from "../runtime.js";
+import type { RuntimeEnv } from "../runtime.js";
 import { defaultRuntime } from "../runtime.js";
 import {
   formatExecSecretRefIdValidationMessage,
@@ -51,7 +51,6 @@ import {
   type ConfigSetOptions,
 } from "./config-set-input.js";
 import { resolveConfigSetMode } from "./config-set-parser.js";
-import { setCommandJsonMode } from "./program/json-mode.js";
 
 type PathSegment = string;
 type ConfigSetParseOpts = {
@@ -70,7 +69,6 @@ type ConfigSetOperation = {
 
 const OLLAMA_API_KEY_PATH: PathSegment[] = ["models", "providers", "ollama", "apiKey"];
 const OLLAMA_PROVIDER_PATH: PathSegment[] = ["models", "providers", "ollama"];
-const GATEWAY_AUTH_MODE_PATH: PathSegment[] = ["gateway", "auth", "mode"];
 const SECRET_PROVIDER_PATH_PREFIX: PathSegment[] = ["secrets", "providers"];
 const CONFIG_SET_EXAMPLE_VALUE = formatCliCommand(
   "openclaw config set gateway.port 19001 --strict-json",
@@ -160,9 +158,9 @@ function parseValue(raw: string, opts: ConfigSetParseOpts): unknown {
   const trimmed = raw.trim();
   if (opts.strictJson) {
     try {
-      return JSON.parse(trimmed);
+      return JSON5.parse(trimmed);
     } catch (err) {
-      throw new Error(`Failed to parse JSON value: ${String(err)}`, { cause: err });
+      throw new Error(`Failed to parse JSON5 value: ${String(err)}`, { cause: err });
     }
   }
 
@@ -352,48 +350,6 @@ function ensureValidOllamaProviderForApiKeySet(
     api: "ollama",
     models: [],
   });
-}
-
-function pruneInactiveGatewayAuthCredentials(params: {
-  root: Record<string, unknown>;
-  operations: ConfigSetOperation[];
-}): string[] {
-  const touchedGatewayAuthMode = params.operations.some((operation) =>
-    pathEquals(operation.requestedPath, GATEWAY_AUTH_MODE_PATH),
-  );
-  if (!touchedGatewayAuthMode) {
-    return [];
-  }
-
-  const gatewayRaw = params.root.gateway;
-  if (!gatewayRaw || typeof gatewayRaw !== "object" || Array.isArray(gatewayRaw)) {
-    return [];
-  }
-  const gateway = gatewayRaw as Record<string, unknown>;
-  const authRaw = gateway.auth;
-  if (!authRaw || typeof authRaw !== "object" || Array.isArray(authRaw)) {
-    return [];
-  }
-  const auth = authRaw as Record<string, unknown>;
-  const mode = typeof auth.mode === "string" ? auth.mode.trim() : "";
-
-  const removedPaths: string[] = [];
-  const remove = (key: "token" | "password") => {
-    if (Object.hasOwn(auth, key)) {
-      delete auth[key];
-      removedPaths.push(`gateway.auth.${key}`);
-    }
-  };
-
-  if (mode === "token") {
-    remove("password");
-  } else if (mode === "password") {
-    remove("token");
-  } else if (mode === "trusted-proxy") {
-    remove("token");
-    remove("password");
-  }
-  return removedPaths;
 }
 
 function toDotPath(path: PathSegment[]): string {
@@ -1008,10 +964,6 @@ export async function runConfigSet(opts: {
       ensureValidOllamaProviderForApiKeySet(next, operation.setPath);
       setAtPath(next, operation.setPath, operation.value);
     }
-    const removedGatewayAuthPaths = pruneInactiveGatewayAuthCredentials({
-      root: next,
-      operations,
-    });
     const nextConfig = next as OpenClawConfig;
 
     if (opts.cliOptions.dryRun) {
@@ -1073,7 +1025,7 @@ export async function runConfigSet(opts: {
         );
       }
       if (opts.cliOptions.json) {
-        writeRuntimeJson(runtime, dryRunResult);
+        runtime.log(JSON.stringify(dryRunResult, null, 2));
       } else {
         if (!dryRunResult.checks.schema && !dryRunResult.checks.resolvability) {
           runtime.log(
@@ -1099,13 +1051,6 @@ export async function runConfigSet(opts: {
     }
 
     await writeConfigFile(next);
-    if (removedGatewayAuthPaths.length > 0) {
-      runtime.log(
-        info(
-          `Removed inactive ${removedGatewayAuthPaths.join(", ")} for gateway.auth.mode=${String(nextConfig.gateway?.auth?.mode ?? "<unset>")}.`,
-        ),
-      );
-    }
     if (operations.length === 1) {
       runtime.log(
         info(
@@ -1121,7 +1066,7 @@ export async function runConfigSet(opts: {
       opts.cliOptions.json &&
       err instanceof ConfigSetDryRunValidationError
     ) {
-      writeRuntimeJson(runtime, err.result);
+      runtime.log(JSON.stringify(err.result, null, 2));
       runtime.exit(1);
       return;
     }
@@ -1143,7 +1088,7 @@ export async function runConfigGet(opts: { path: string; json?: boolean; runtime
       return;
     }
     if (opts.json) {
-      writeRuntimeJson(runtime, res.value ?? null);
+      runtime.log(JSON.stringify(res.value ?? null, null, 2));
       return;
     }
     if (
@@ -1154,7 +1099,7 @@ export async function runConfigGet(opts: { path: string; json?: boolean; runtime
       runtime.log(String(res.value));
       return;
     }
-    writeRuntimeJson(runtime, res.value ?? null);
+    runtime.log(JSON.stringify(res.value ?? null, null, 2));
   } catch (err) {
     runtime.error(danger(String(err)));
     runtime.exit(1);
@@ -1206,7 +1151,7 @@ export async function runConfigValidate(opts: { json?: boolean; runtime?: Runtim
 
     if (!snapshot.exists) {
       if (opts.json) {
-        writeRuntimeJson(runtime, { valid: false, path: outputPath, error: "file not found" }, 0);
+        runtime.log(JSON.stringify({ valid: false, path: outputPath, error: "file not found" }));
       } else {
         runtime.error(danger(`Config file not found: ${shortPath}`));
       }
@@ -1218,7 +1163,7 @@ export async function runConfigValidate(opts: { json?: boolean; runtime?: Runtim
       const issues = normalizeConfigIssues(snapshot.issues);
 
       if (opts.json) {
-        writeRuntimeJson(runtime, { valid: false, path: outputPath, issues });
+        runtime.log(JSON.stringify({ valid: false, path: outputPath, issues }, null, 2));
       } else {
         runtime.error(danger(`Config invalid at ${shortPath}:`));
         for (const line of formatConfigIssueLines(issues, danger("×"), { normalizeRoot: true })) {
@@ -1232,13 +1177,13 @@ export async function runConfigValidate(opts: { json?: boolean; runtime?: Runtim
     }
 
     if (opts.json) {
-      writeRuntimeJson(runtime, { valid: true, path: outputPath }, 0);
+      runtime.log(JSON.stringify({ valid: true, path: outputPath }));
     } else {
       runtime.log(success(`Config valid: ${shortPath}`));
     }
   } catch (err) {
     if (opts.json) {
-      writeRuntimeJson(runtime, { valid: false, path: outputPath, error: String(err) }, 0);
+      runtime.log(JSON.stringify({ valid: false, path: outputPath, error: String(err) }));
     } else {
       runtime.error(danger(`Config validation error: ${String(err)}`));
     }
@@ -1277,11 +1222,12 @@ export function registerConfigCli(program: Command) {
       await runConfigGet({ path, json: Boolean(opts.json) });
     });
 
-  setCommandJsonMode(cmd.command("set"), "parse-only")
+  cmd
+    .command("set")
     .description(CONFIG_SET_DESCRIPTION)
     .argument("[path]", "Config path (dot or bracket notation)")
-    .argument("[value]", "Value (JSON/JSON5 or raw string)")
-    .option("--strict-json", "Strict JSON parsing (error instead of raw string fallback)", false)
+    .argument("[value]", "Value (JSON5 or raw string)")
+    .option("--strict-json", "Strict JSON5 parsing (error instead of raw string fallback)", false)
     .option("--json", "Legacy alias for --strict-json", false)
     .option(
       "--dry-run",

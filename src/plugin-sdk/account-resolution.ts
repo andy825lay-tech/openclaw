@@ -1,16 +1,9 @@
 export type { OpenClawConfig } from "../config/config.js";
 
 export { createAccountActionGate } from "../channels/plugins/account-action-gate.js";
-export {
-  createAccountListHelpers,
-  describeAccountSnapshot,
-  listCombinedAccountIds,
-  mergeAccountConfig,
-  resolveListedDefaultAccountId,
-  resolveMergedAccountConfig,
-} from "../channels/plugins/account-helpers.js";
+export { createAccountListHelpers } from "../channels/plugins/account-helpers.js";
 export { normalizeChatType } from "../channels/chat-type.js";
-export { resolveAccountEntry, resolveNormalizedAccountEntry } from "../routing/account-lookup.js";
+export { resolveAccountEntry } from "../routing/account-lookup.js";
 export {
   DEFAULT_ACCOUNT_ID,
   normalizeAccountId,

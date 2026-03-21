@@ -2,8 +2,8 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { parseSlackTarget } from "../../../extensions/slack/src/targets.js";
-import { parseTelegramTarget } from "../../../extensions/telegram/src/targets.js";
+import { slackPlugin } from "../../../extensions/slack/src/channel.js";
+import { telegramPlugin } from "../../../extensions/telegram/src/channel.js";
 import type { ChannelThreadingToolContext } from "../../channels/plugins/types.js";
 import type { OpenClawConfig } from "../../config/config.js";
 import {
@@ -27,67 +27,28 @@ function createToolContext(
   };
 }
 
-function resolveSlackAutoThreadId(params: {
-  to: string;
-  toolContext?: {
-    currentChannelId?: string;
-    currentThreadTs?: string;
-    replyToMode?: "off" | "first" | "all";
-    hasRepliedRef?: { value: boolean };
-  };
-}): string | undefined {
-  const context = params.toolContext;
-  if (!context?.currentThreadTs || !context.currentChannelId) {
-    return undefined;
-  }
-  if (context.replyToMode !== "all" && context.replyToMode !== "first") {
-    return undefined;
-  }
-  const parsedTarget = parseSlackTarget(params.to, { defaultKind: "channel" });
-  if (!parsedTarget || parsedTarget.kind !== "channel") {
-    return undefined;
-  }
-  if (parsedTarget.id.toLowerCase() !== context.currentChannelId.toLowerCase()) {
-    return undefined;
-  }
-  if (context.replyToMode === "first" && context.hasRepliedRef?.value) {
-    return undefined;
-  }
-  return context.currentThreadTs;
-}
-
-function resolveTelegramAutoThreadId(params: {
-  to: string;
-  toolContext?: { currentThreadTs?: string; currentChannelId?: string };
-}): string | undefined {
-  const context = params.toolContext;
-  if (!context?.currentThreadTs || !context.currentChannelId) {
-    return undefined;
-  }
-  const parsedTo = parseTelegramTarget(params.to);
-  const parsedChannel = parseTelegramTarget(context.currentChannelId);
-  if (parsedTo.chatId.toLowerCase() !== parsedChannel.chatId.toLowerCase()) {
-    return undefined;
-  }
-  return context.currentThreadTs;
-}
-
 describe("message action threading helpers", () => {
   it("resolves Slack auto-thread ids only for matching active channels", () => {
     expect(
-      resolveSlackAutoThreadId({
+      slackPlugin?.threading?.resolveAutoThreadId?.({
+        cfg,
+        accountId: undefined,
         to: "#c123",
         toolContext: createToolContext(),
       }),
     ).toBe("thread-1");
     expect(
-      resolveSlackAutoThreadId({
+      slackPlugin?.threading?.resolveAutoThreadId?.({
+        cfg,
+        accountId: undefined,
         to: "channel:C999",
         toolContext: createToolContext(),
       }),
     ).toBeUndefined();
     expect(
-      resolveSlackAutoThreadId({
+      slackPlugin?.threading?.resolveAutoThreadId?.({
+        cfg,
+        accountId: undefined,
         to: "user:U123",
         toolContext: createToolContext(),
       }),
@@ -96,7 +57,9 @@ describe("message action threading helpers", () => {
 
   it("skips Slack auto-thread ids when reply mode or context blocks them", () => {
     expect(
-      resolveSlackAutoThreadId({
+      slackPlugin?.threading?.resolveAutoThreadId?.({
+        cfg,
+        accountId: undefined,
         to: "C123",
         toolContext: createToolContext({
           replyToMode: "first",
@@ -105,13 +68,17 @@ describe("message action threading helpers", () => {
       }),
     ).toBeUndefined();
     expect(
-      resolveSlackAutoThreadId({
+      slackPlugin?.threading?.resolveAutoThreadId?.({
+        cfg,
+        accountId: undefined,
         to: "C123",
         toolContext: createToolContext({ replyToMode: "off" }),
       }),
     ).toBeUndefined();
     expect(
-      resolveSlackAutoThreadId({
+      slackPlugin?.threading?.resolveAutoThreadId?.({
+        cfg,
+        accountId: undefined,
         to: "C123",
         toolContext: createToolContext({ currentThreadTs: undefined }),
       }),
@@ -120,7 +87,9 @@ describe("message action threading helpers", () => {
 
   it("resolves Telegram auto-thread ids for matching chats across target formats", () => {
     expect(
-      resolveTelegramAutoThreadId({
+      telegramPlugin?.threading?.resolveAutoThreadId?.({
+        cfg,
+        accountId: undefined,
         to: "telegram:group:-100123:topic:77",
         toolContext: createToolContext({
           currentChannelId: "tg:group:-100123",
@@ -128,7 +97,9 @@ describe("message action threading helpers", () => {
       }),
     ).toBe("thread-1");
     expect(
-      resolveTelegramAutoThreadId({
+      telegramPlugin?.threading?.resolveAutoThreadId?.({
+        cfg,
+        accountId: undefined,
         to: "-100999:77",
         toolContext: createToolContext({
           currentChannelId: "-100123",
@@ -136,7 +107,9 @@ describe("message action threading helpers", () => {
       }),
     ).toBeUndefined();
     expect(
-      resolveTelegramAutoThreadId({
+      telegramPlugin?.threading?.resolveAutoThreadId?.({
+        cfg,
+        accountId: undefined,
         to: "-100123",
         toolContext: createToolContext({ currentChannelId: undefined }),
       }),

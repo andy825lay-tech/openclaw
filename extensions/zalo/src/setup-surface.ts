@@ -1,7 +1,6 @@
 import {
   buildSingleChannelSecretPromptState,
   createTopLevelChannelDmPolicy,
-  createStandardChannelSetupStatus,
   DEFAULT_ACCOUNT_ID,
   formatDocsLink,
   hasConfiguredSecretInput,
@@ -196,15 +195,13 @@ export { zaloSetupAdapter } from "./setup-core.js";
 
 export const zaloSetupWizard: ChannelSetupWizard = {
   channel,
-  status: createStandardChannelSetupStatus({
-    channelLabel: "Zalo",
+  status: {
     configuredLabel: "configured",
     unconfiguredLabel: "needs token",
     configuredHint: "recommended · configured",
     unconfiguredHint: "recommended · newcomer-friendly",
     configuredScore: 1,
     unconfiguredScore: 10,
-    includeStatusLine: true,
     resolveConfigured: ({ cfg }) =>
       listZaloAccountIds(cfg).some((accountId) => {
         const account = resolveZaloAccount({
@@ -218,7 +215,11 @@ export const zaloSetupWizard: ChannelSetupWizard = {
           Boolean(account.config.tokenFile?.trim())
         );
       }),
-  }),
+    resolveStatusLines: ({ cfg, configured }) => {
+      void cfg;
+      return [`Zalo: ${configured ? "configured" : "needs token"}`];
+    },
+  },
   credentials: [],
   finalize: async ({ cfg, accountId, forceAllowFrom, options, prompter }) => {
     let next = cfg;

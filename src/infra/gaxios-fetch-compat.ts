@@ -2,6 +2,7 @@ import { createRequire } from "node:module";
 import type { ConnectionOptions } from "node:tls";
 import { pathToFileURL } from "node:url";
 import type { Dispatcher } from "undici";
+import { Agent as UndiciAgent, ProxyAgent } from "undici";
 
 type ProxyRule = RegExp | URL | string;
 type TlsCert = ConnectionOptions["cert"];
@@ -38,11 +39,6 @@ type GaxiosConstructor = {
 const TEST_GAXIOS_CONSTRUCTOR_OVERRIDE = "__OPENCLAW_TEST_GAXIOS_CONSTRUCTOR__";
 
 let installState: "not-installed" | "installing" | "shimmed" | "installed" = "not-installed";
-
-type UndiciRuntimeDeps = {
-  UndiciAgent: typeof import("undici").Agent;
-  ProxyAgent: typeof import("undici").ProxyAgent;
-};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -144,15 +140,6 @@ function resolveProxyUri(init: GaxiosFetchRequestInit, url: URL): string | undef
   return urlMayUseProxy(url, init.noProxy) ? envProxy : undefined;
 }
 
-function loadUndiciRuntimeDeps(): UndiciRuntimeDeps {
-  const require = createRequire(import.meta.url);
-  const undici = require("undici") as typeof import("undici");
-  return {
-    ProxyAgent: undici.ProxyAgent,
-    UndiciAgent: undici.Agent,
-  };
-}
-
 function buildDispatcher(init: GaxiosFetchRequestInit, url: URL): Dispatcher | undefined {
   if (init.dispatcher) {
     return init.dispatcher;
@@ -167,7 +154,6 @@ function buildDispatcher(init: GaxiosFetchRequestInit, url: URL): Dispatcher | u
   const proxyUri =
     resolveProxyUri(init, url) ?? (hasProxyAgentShape(agent) ? String(agent.proxy) : undefined);
   if (proxyUri) {
-    const { ProxyAgent } = loadUndiciRuntimeDeps();
     return new ProxyAgent({
       requestTls: cert !== undefined || key !== undefined ? { cert, key } : undefined,
       uri: proxyUri,
@@ -175,7 +161,6 @@ function buildDispatcher(init: GaxiosFetchRequestInit, url: URL): Dispatcher | u
   }
 
   if (cert !== undefined || key !== undefined) {
-    const { UndiciAgent } = loadUndiciRuntimeDeps();
     return new UndiciAgent({
       connect: { cert, key },
     });

@@ -9,7 +9,6 @@ import android.hardware.SensorManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
-import androidx.compose.foundation.BorderStroke
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -61,7 +60,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Cloud
-import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Link
@@ -93,7 +91,6 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import ai.openclaw.app.BuildConfig
 import ai.openclaw.app.LocationMode
 import ai.openclaw.app.MainViewModel
 import ai.openclaw.app.node.DeviceNotificationListenerService
@@ -239,10 +236,8 @@ fun OnboardingFlow(viewModel: MainViewModel, modifier: Modifier = Modifier) {
 
   val smsAvailable =
     remember(context) {
-      BuildConfig.OPENCLAW_ENABLE_SMS &&
-        context.packageManager?.hasSystemFeature(PackageManager.FEATURE_TELEPHONY) == true
+      context.packageManager?.hasSystemFeature(PackageManager.FEATURE_TELEPHONY) == true
     }
-  val callLogAvailable = remember { BuildConfig.OPENCLAW_ENABLE_CALL_LOG }
   val motionAvailable =
     remember(context) {
       hasMotionCapabilities(context)
@@ -300,7 +295,7 @@ fun OnboardingFlow(viewModel: MainViewModel, modifier: Modifier = Modifier) {
     }
   var enableCallLog by
     rememberSaveable {
-      mutableStateOf(callLogAvailable && isPermissionGranted(context, Manifest.permission.READ_CALL_LOG))
+      mutableStateOf(isPermissionGranted(context, Manifest.permission.READ_CALL_LOG))
     }
 
   var pendingPermissionToggle by remember { mutableStateOf<PermissionToggle?>(null) }
@@ -318,7 +313,7 @@ fun OnboardingFlow(viewModel: MainViewModel, modifier: Modifier = Modifier) {
       PermissionToggle.Calendar -> enableCalendar = enabled
       PermissionToggle.Motion -> enableMotion = enabled && motionAvailable
       PermissionToggle.Sms -> enableSms = enabled && smsAvailable
-      PermissionToggle.CallLog -> enableCallLog = enabled && callLogAvailable
+      PermissionToggle.CallLog -> enableCallLog = enabled
     }
   }
 
@@ -348,8 +343,7 @@ fun OnboardingFlow(viewModel: MainViewModel, modifier: Modifier = Modifier) {
         !smsAvailable ||
                 (isPermissionGranted(context, Manifest.permission.SEND_SMS) &&
                         isPermissionGranted(context, Manifest.permission.READ_SMS))
-      PermissionToggle.CallLog ->
-        !callLogAvailable || isPermissionGranted(context, Manifest.permission.READ_CALL_LOG)
+      PermissionToggle.CallLog -> isPermissionGranted(context, Manifest.permission.READ_CALL_LOG)
     }
 
   fun setSpecialAccessToggleEnabled(toggle: SpecialAccessToggle, enabled: Boolean) {
@@ -373,7 +367,6 @@ fun OnboardingFlow(viewModel: MainViewModel, modifier: Modifier = Modifier) {
       enableSms,
       enableCallLog,
       smsAvailable,
-      callLogAvailable,
       motionAvailable,
     ) {
       val enabled = mutableListOf<String>()
@@ -388,7 +381,7 @@ fun OnboardingFlow(viewModel: MainViewModel, modifier: Modifier = Modifier) {
       if (enableCalendar) enabled += "Calendar"
       if (enableMotion && motionAvailable) enabled += "Motion"
       if (smsAvailable && enableSms) enabled += "SMS"
-      if (callLogAvailable && enableCallLog) enabled += "Call Log"
+      if (enableCallLog) enabled += "Call Log"
       if (enabled.isEmpty()) "None selected" else enabled.joinToString(", ")
     }
 
@@ -617,7 +610,6 @@ fun OnboardingFlow(viewModel: MainViewModel, modifier: Modifier = Modifier) {
               motionPermissionRequired = motionPermissionRequired,
               enableSms = enableSms,
               smsAvailable = smsAvailable,
-              callLogAvailable = callLogAvailable,
               enableCallLog = enableCallLog,
               context = context,
               onDiscoveryChange = { checked ->
@@ -717,15 +709,11 @@ fun OnboardingFlow(viewModel: MainViewModel, modifier: Modifier = Modifier) {
                 }
               },
               onCallLogChange = { checked ->
-                if (!callLogAvailable) {
-                  setPermissionToggleEnabled(PermissionToggle.CallLog, false)
-                } else {
-                  requestPermissionToggle(
-                    PermissionToggle.CallLog,
-                    checked,
-                    listOf(Manifest.permission.READ_CALL_LOG),
-                  )
-                }
+                requestPermissionToggle(
+                  PermissionToggle.CallLog,
+                  checked,
+                  listOf(Manifest.permission.READ_CALL_LOG),
+                )
               },
             )
           OnboardingStep.FinalCheck ->
@@ -1317,7 +1305,6 @@ private fun PermissionsStep(
   motionPermissionRequired: Boolean,
   enableSms: Boolean,
   smsAvailable: Boolean,
-  callLogAvailable: Boolean,
   enableCallLog: Boolean,
   context: Context,
   onDiscoveryChange: (Boolean) -> Unit,
@@ -1464,16 +1451,14 @@ private fun PermissionsStep(
         onCheckedChange = onSmsChange,
       )
     }
-    if (callLogAvailable) {
-      InlineDivider()
-      PermissionToggleRow(
-        title = "Call Log",
-        subtitle = "callLog.search",
-        checked = enableCallLog,
-        granted = isPermissionGranted(context, Manifest.permission.READ_CALL_LOG),
-        onCheckedChange = onCallLogChange,
-      )
-    }
+    InlineDivider()
+    PermissionToggleRow(
+      title = "Call Log",
+      subtitle = "callLog.search",
+      checked = enableCallLog,
+      granted = isPermissionGranted(context, Manifest.permission.READ_CALL_LOG),
+      onCheckedChange = onCallLogChange,
+    )
     Text("All settings can be changed later in Settings.", style = onboardingCalloutStyle, color = onboardingTextSecondary)
   }
 }
@@ -1534,12 +1519,6 @@ private fun FinalStep(
   enabledPermissions: String,
   methodLabel: String,
 ) {
-  val context = androidx.compose.ui.platform.LocalContext.current
-  val gatewayAddress = parsedGateway?.displayUrl ?: "Invalid gateway URL"
-  val statusLabel = gatewayStatusForDisplay(statusText)
-  val showDiagnostics = gatewayStatusHasDiagnostics(statusText)
-  val pairingRequired = gatewayStatusLooksLikePairing(statusText)
-
   Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
     Text("Review", style = onboardingTitle1Style, color = onboardingText)
 
@@ -1552,7 +1531,7 @@ private fun FinalStep(
     SummaryCard(
       icon = Icons.Default.Cloud,
       label = "Gateway",
-      value = gatewayAddress,
+      value = parsedGateway?.displayUrl ?: "Invalid gateway URL",
       accentColor = Color(0xFF7C5AC7),
     )
     SummaryCard(
@@ -1636,7 +1615,7 @@ private fun FinalStep(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
         color = onboardingWarningSoft,
-        border = BorderStroke(1.dp, onboardingWarning.copy(alpha = 0.2f)),
+        border = androidx.compose.foundation.BorderStroke(1.dp, onboardingWarning.copy(alpha = 0.2f)),
       ) {
         Column(
           modifier = Modifier.padding(14.dp),
@@ -1661,66 +1640,13 @@ private fun FinalStep(
               )
             }
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-              Text(
-                  if (pairingRequired) "Pairing Required" else "Connection Failed",
-                  style = onboardingHeadlineStyle,
-                  color = onboardingWarning,
-              )
-              Text(
-                  if (pairingRequired) {
-                    "Approve this phone on the gateway host, or copy the report below."
-                  } else {
-                    "Copy this report and give it to your Claw."
-                  },
-                  style = onboardingCalloutStyle,
-                  color = onboardingTextSecondary,
-              )
+              Text("Pairing Required", style = onboardingHeadlineStyle, color = onboardingWarning)
+              Text("Run these on your gateway host:", style = onboardingCalloutStyle, color = onboardingTextSecondary)
             }
           }
-          if (showDiagnostics) {
-            Text("Error", style = onboardingCaption1Style.copy(fontWeight = FontWeight.Bold), color = onboardingTextSecondary)
-            Surface(
-              modifier = Modifier.fillMaxWidth(),
-              shape = RoundedCornerShape(12.dp),
-              color = onboardingCommandBg,
-              border = BorderStroke(1.dp, onboardingCommandBorder),
-            ) {
-              Text(
-                statusLabel,
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-                style = onboardingCalloutStyle.copy(fontFamily = FontFamily.Monospace),
-                color = onboardingCommandText,
-              )
-            }
-            Text(
-              "OpenClaw Android ${openClawAndroidVersionLabel()}",
-              style = onboardingCaption1Style,
-              color = onboardingTextSecondary,
-            )
-            Button(
-              onClick = {
-                copyGatewayDiagnosticsReport(
-                  context = context,
-                  screen = "onboarding final check",
-                  gatewayAddress = gatewayAddress,
-                  statusText = statusLabel,
-                )
-              },
-              modifier = Modifier.fillMaxWidth().height(48.dp),
-              shape = RoundedCornerShape(12.dp),
-              colors = ButtonDefaults.buttonColors(containerColor = onboardingSurface, contentColor = onboardingWarning),
-              border = BorderStroke(1.dp, onboardingWarning.copy(alpha = 0.3f)),
-            ) {
-              Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
-              Spacer(modifier = Modifier.width(8.dp))
-              Text("Copy Report for Claw", style = onboardingCalloutStyle.copy(fontWeight = FontWeight.Bold))
-            }
-          }
-          if (pairingRequired) {
-            CommandBlock("openclaw devices list")
-            CommandBlock("openclaw devices approve <requestId>")
-            Text("Then tap Connect again.", style = onboardingCalloutStyle, color = onboardingTextSecondary)
-          }
+          CommandBlock("openclaw devices list")
+          CommandBlock("openclaw devices approve <requestId>")
+          Text("Then tap Connect again.", style = onboardingCalloutStyle, color = onboardingTextSecondary)
         }
       }
     }

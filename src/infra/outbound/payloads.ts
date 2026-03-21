@@ -16,7 +16,6 @@ import {
 export type NormalizedOutboundPayload = {
   text: string;
   mediaUrls: string[];
-  audioAsVoice?: boolean;
   interactive?: InteractiveReply;
   channelData?: Record<string, unknown>;
 };
@@ -25,7 +24,6 @@ export type OutboundPayloadJson = {
   text: string;
   mediaUrl: string | null;
   mediaUrls?: string[];
-  audioAsVoice?: boolean;
   interactive?: InteractiveReply;
   channelData?: Record<string, unknown>;
 };
@@ -113,7 +111,6 @@ export function normalizeOutboundPayloads(
     normalizedPayloads.push({
       text,
       mediaUrls: parts.mediaUrls,
-      audioAsVoice: payload.audioAsVoice === true ? true : undefined,
       ...(hasInteractive ? { interactive } : {}),
       ...(hasChannelData ? { channelData } : {}),
     });
@@ -131,7 +128,6 @@ export function normalizeOutboundPayloadsForJson(
       text: parts.text,
       mediaUrl: payload.mediaUrl ?? null,
       mediaUrls: parts.mediaUrls.length ? parts.mediaUrls : undefined,
-      audioAsVoice: payload.audioAsVoice === true ? true : undefined,
       interactive: payload.interactive,
       channelData: payload.channelData,
     });

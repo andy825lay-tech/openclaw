@@ -1,4 +1,4 @@
-// Private helper surface for the bundled zalo plugin.
+// Narrow plugin-sdk surface for the bundled zalo plugin.
 // Keep this list additive and scoped to symbols used under extensions/zalo.
 
 export { jsonResult, readStringParam } from "../agents/tools/common.js";

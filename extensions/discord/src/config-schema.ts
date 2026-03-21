@@ -1,3 +1,3 @@
-import { buildChannelConfigSchema, DiscordConfigSchema } from "./runtime-api.js";
+import { buildChannelConfigSchema, DiscordConfigSchema } from "openclaw/plugin-sdk/discord-core";
 
 export const DiscordChannelConfigSchema = buildChannelConfigSchema(DiscordConfigSchema);

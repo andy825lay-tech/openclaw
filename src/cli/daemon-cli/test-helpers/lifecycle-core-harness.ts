@@ -1,11 +1,14 @@
 import { vi } from "vitest";
 import type { GatewayService } from "../../../daemon/service.js";
+import type { RuntimeEnv } from "../../../runtime.js";
 import type { MockFn } from "../../../test-utils/vitest-mock-fn.js";
-import { createCliRuntimeCapture } from "../../test-runtime-capture.js";
 
-const lifecycleRuntimeCapture = createCliRuntimeCapture();
-export const runtimeLogs = lifecycleRuntimeCapture.runtimeLogs;
-type LifecycleRuntimeHarness = typeof lifecycleRuntimeCapture.defaultRuntime;
+export const runtimeLogs: string[] = [];
+
+type LifecycleRuntimeHarness = RuntimeEnv & {
+  error: MockFn<RuntimeEnv["error"]>;
+  exit: MockFn<RuntimeEnv["exit"]>;
+};
 
 type LifecycleServiceHarness = GatewayService & {
   install: MockFn<GatewayService["install"]>;
@@ -17,7 +20,15 @@ type LifecycleServiceHarness = GatewayService & {
   restart: MockFn<GatewayService["restart"]>;
 };
 
-export const defaultRuntime: LifecycleRuntimeHarness = lifecycleRuntimeCapture.defaultRuntime;
+export const defaultRuntime: LifecycleRuntimeHarness = {
+  log: (...args: unknown[]) => {
+    runtimeLogs.push(args.map((arg) => String(arg)).join(" "));
+  },
+  error: vi.fn(),
+  exit: vi.fn((code: number) => {
+    throw new Error(`__exit__:${code}`);
+  }),
+};
 
 export const service: LifecycleServiceHarness = {
   label: "TestService",
@@ -33,7 +44,7 @@ export const service: LifecycleServiceHarness = {
 };
 
 export function resetLifecycleRuntimeLogs() {
-  lifecycleRuntimeCapture.resetRuntimeCapture();
+  runtimeLogs.length = 0;
 }
 
 export function resetLifecycleServiceMocks() {

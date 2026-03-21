@@ -1,4 +1,4 @@
-// Private helper surface for the bundled nextcloud-talk plugin.
+// Narrow plugin-sdk surface for the bundled nextcloud-talk plugin.
 // Keep this list additive and scoped to symbols used under extensions/nextcloud-talk.
 
 export { logInboundDrop } from "../channels/logging.js";

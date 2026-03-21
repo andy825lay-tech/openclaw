@@ -165,7 +165,7 @@ export async function resolveMessageChannelSelection(params: {
       if (fallback) {
         return {
           channel: fallback,
-          configured: [],
+          configured: await listConfiguredMessageChannels(params.cfg),
           source: "tool-context-fallback",
         };
       }
@@ -176,7 +176,7 @@ export async function resolveMessageChannelSelection(params: {
     }
     return {
       channel: availableExplicit,
-      configured: [],
+      configured: await listConfiguredMessageChannels(params.cfg),
       source: "explicit",
     };
   }
@@ -188,7 +188,7 @@ export async function resolveMessageChannelSelection(params: {
   if (fallback) {
     return {
       channel: fallback,
-      configured: [],
+      configured: await listConfiguredMessageChannels(params.cfg),
       source: "tool-context-fallback",
     };
   }

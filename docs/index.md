@@ -106,19 +106,15 @@ The Gateway is the single source of truth for sessions, routing, and channel con
     openclaw onboard --install-daemon
     ```
   </Step>
-  <Step title="Chat">
-    Open the Control UI in your browser and send a message:
-
+  <Step title="Pair WhatsApp and start the Gateway">
     ```bash
-    openclaw dashboard
+    openclaw channels login
+    openclaw gateway --port 18789
     ```
-
-    Or connect a channel ([Telegram](/channels/telegram) is fastest) and chat from your phone.
-
   </Step>
 </Steps>
 
-Need the full install and dev setup? See [Getting Started](/start/getting-started).
+Need the full install and dev setup? See [Quick start](/start/quickstart).
 
 ## Dashboard
 

@@ -1,8 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
-import { collectFilesSync, isCodeFile, relativeToCwd } from "./check-file-utils.js";
 
 const FORBIDDEN_REPO_SRC_IMPORT = /["'](?:\.\.\/)+(?:src\/)[^"']+["']/;
+
+function isSourceFile(filePath: string): boolean {
+  if (filePath.endsWith(".d.ts")) {
+    return false;
+  }
+  return /\.(?:[cm]?ts|[cm]?js|tsx|jsx)$/u.test(filePath);
+}
 
 function isProductionExtensionFile(filePath: string): boolean {
   return !(
@@ -22,9 +28,34 @@ function isProductionExtensionFile(filePath: string): boolean {
 }
 
 function collectExtensionSourceFiles(rootDir: string): string[] {
-  return collectFilesSync(rootDir, {
-    includeFile: (filePath) => isCodeFile(filePath) && isProductionExtensionFile(filePath),
-  });
+  const files: string[] = [];
+  const stack = [rootDir];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current) {
+      continue;
+    }
+    let entries: fs.Dirent[] = [];
+    try {
+      entries = fs.readdirSync(current, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const fullPath = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === "node_modules" || entry.name === "dist" || entry.name === "coverage") {
+          continue;
+        }
+        stack.push(fullPath);
+        continue;
+      }
+      if (entry.isFile() && isSourceFile(fullPath) && isProductionExtensionFile(fullPath)) {
+        files.push(fullPath);
+      }
+    }
+  }
+  return files;
 }
 
 function main() {
@@ -42,7 +73,8 @@ function main() {
   if (offenders.length > 0) {
     console.error("Production extension files must not import the repo src/ tree directly.");
     for (const offender of offenders.toSorted()) {
-      console.error(`- ${relativeToCwd(offender)}`);
+      const relative = path.relative(process.cwd(), offender) || offender;
+      console.error(`- ${relative}`);
     }
     console.error(
       "Publish a focused openclaw/plugin-sdk/<subpath> surface or use the extension's own public barrel instead.",

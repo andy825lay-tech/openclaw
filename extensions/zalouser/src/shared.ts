@@ -1,8 +1,4 @@
-import { describeAccountSnapshot } from "openclaw/plugin-sdk/account-helpers";
-import {
-  adaptScopedAccountAccessor,
-  createScopedChannelConfigAdapter,
-} from "openclaw/plugin-sdk/channel-config-helpers";
+import { createScopedChannelConfigAdapter } from "openclaw/plugin-sdk/channel-config-helpers";
 import type { ChannelPlugin } from "../runtime-api.js";
 import { buildChannelConfigSchema, formatAllowFromLowercase } from "../runtime-api.js";
 import {
@@ -29,7 +25,7 @@ export const zalouserMeta = {
 const zalouserConfigAdapter = createScopedChannelConfigAdapter<ResolvedZalouserAccount>({
   sectionKey: "zalouser",
   listAccountIds: listZalouserAccountIds,
-  resolveAccount: adaptScopedAccountAccessor(resolveZalouserAccountSync),
+  resolveAccount: (cfg, accountId) => resolveZalouserAccountSync({ cfg, accountId }),
   defaultAccountId: resolveDefaultZalouserAccountId,
   clearBaseFields: [
     "profile",
@@ -72,10 +68,12 @@ export function createZalouserPluginBase(params: {
     config: {
       ...zalouserConfigAdapter,
       isConfigured: async (account) => await checkZcaAuthenticated(account.profile),
-      describeAccount: (account) =>
-        describeAccountSnapshot({
-          account,
-        }),
+      describeAccount: (account) => ({
+        accountId: account.accountId,
+        name: account.name,
+        enabled: account.enabled,
+        configured: undefined,
+      }),
     },
     setup: params.setup,
   };

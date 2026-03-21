@@ -8,8 +8,8 @@ import {
 import {
   resolveNonBundledProviderPluginIds,
   resolveOwningPluginIdsForProvider,
+  resolvePluginProviders,
 } from "./providers.js";
-import { resolvePluginProviders } from "./providers.runtime.js";
 import { resolvePluginCacheInputs } from "./roots.js";
 import type {
   ProviderAuthDoctorHintContext,
@@ -89,7 +89,7 @@ function buildHookProviderCacheKey(params: {
   return `${roots.workspace ?? ""}::${roots.global}::${roots.stock ?? ""}::${JSON.stringify(params.onlyPluginIds ?? [])}`;
 }
 
-export function clearProviderRuntimeHookCache(): void {
+export function resetProviderRuntimeHookCacheForTest(): void {
   cachedHookProvidersWithoutConfig = new WeakMap<
     NodeJS.ProcessEnv,
     Map<string, ProviderPlugin[]>
@@ -98,10 +98,6 @@ export function clearProviderRuntimeHookCache(): void {
     OpenClawConfig,
     WeakMap<NodeJS.ProcessEnv, Map<string, ProviderPlugin[]>>
   >();
-}
-
-export function resetProviderRuntimeHookCacheForTest(): void {
-  clearProviderRuntimeHookCache();
 }
 
 function resolveProviderPluginsForHooks(params: {

@@ -1,10 +1,9 @@
 import type { Bot } from "grammy";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { RuntimeEnv } from "../../../../src/runtime.js";
+import { deliverReplies } from "./delivery.js";
 
-const { loadWebMedia } = vi.hoisted(() => ({
-  loadWebMedia: vi.fn(),
-}));
+const loadWebMedia = vi.fn();
 const triggerInternalHook = vi.hoisted(() => vi.fn(async () => {}));
 const messageHookRunner = vi.hoisted(() => ({
   hasHooks: vi.fn<(name: string) => boolean>(() => false),
@@ -22,13 +21,10 @@ type DeliverWithParams = Omit<
   DeliverRepliesParams,
   "chatId" | "token" | "replyToMode" | "textLimit"
 > &
-  Partial<Pick<DeliverRepliesParams, "replyToMode" | "textLimit" | "mediaLoader">>;
+  Partial<Pick<DeliverRepliesParams, "replyToMode" | "textLimit">>;
 type RuntimeStub = Pick<RuntimeEnv, "error" | "log" | "exit">;
 
-vi.mock("openclaw/plugin-sdk/web-media", () => ({
-  loadWebMedia: (...args: unknown[]) => loadWebMedia(...args),
-}));
-vi.mock("openclaw/plugin-sdk/web-media.js", () => ({
+vi.mock("../../../whatsapp/src/media.js", () => ({
   loadWebMedia: (...args: unknown[]) => loadWebMedia(...args),
 }));
 
@@ -45,9 +41,6 @@ vi.mock("../../../../src/hooks/internal-hooks.js", async () => {
     triggerInternalHook,
   };
 });
-
-vi.resetModules();
-const { deliverReplies } = await import("./delivery.js");
 
 vi.mock("grammy", () => ({
   InputFile: class {
@@ -77,7 +70,6 @@ async function deliverWith(params: DeliverWithParams) {
   await deliverReplies({
     ...baseDeliveryParams,
     ...params,
-    mediaLoader: params.mediaLoader ?? loadWebMedia,
   });
 }
 
@@ -636,7 +628,6 @@ describe("deliverReplies", () => {
       expect.any(String),
       expect.objectContaining({
         reply_to_message_id: 500,
-        allow_sending_without_reply: true,
       }),
     );
     expect(sendMessage).toHaveBeenCalledWith(
@@ -745,7 +736,6 @@ describe("deliverReplies", () => {
     expect(sendMessage.mock.calls[0][2]).toEqual(
       expect.objectContaining({
         reply_to_message_id: 77,
-        allow_sending_without_reply: true,
         reply_markup: {
           inline_keyboard: [[{ text: "Ack", callback_data: "ack" }]],
         },
@@ -801,10 +791,7 @@ describe("deliverReplies", () => {
     expect(sendMessage.mock.calls.length).toBeGreaterThanOrEqual(2);
     // First chunk should have reply_to_message_id
     expect(sendMessage.mock.calls[0][2]).toEqual(
-      expect.objectContaining({
-        reply_to_message_id: 700,
-        allow_sending_without_reply: true,
-      }),
+      expect.objectContaining({ reply_to_message_id: 700 }),
     );
     // Second chunk should NOT have reply_to_message_id
     expect(sendMessage.mock.calls[1][2]).not.toHaveProperty("reply_to_message_id");
@@ -831,12 +818,7 @@ describe("deliverReplies", () => {
     expect(sendMessage.mock.calls.length).toBeGreaterThanOrEqual(2);
     // Both chunks should have reply_to_message_id
     for (const call of sendMessage.mock.calls) {
-      expect(call[2]).toEqual(
-        expect.objectContaining({
-          reply_to_message_id: 800,
-          allow_sending_without_reply: true,
-        }),
-      );
+      expect(call[2]).toEqual(expect.objectContaining({ reply_to_message_id: 800 }));
     }
   });
 
@@ -864,10 +846,7 @@ describe("deliverReplies", () => {
     expect(sendPhoto).toHaveBeenCalledTimes(2);
     // First media should have reply_to_message_id
     expect(sendPhoto.mock.calls[0][2]).toEqual(
-      expect.objectContaining({
-        reply_to_message_id: 900,
-        allow_sending_without_reply: true,
-      }),
+      expect.objectContaining({ reply_to_message_id: 900 }),
     );
     // Second media should NOT have reply_to_message_id
     expect(sendPhoto.mock.calls[1][2]).not.toHaveProperty("reply_to_message_id");

@@ -1,29 +1,12 @@
-type DiscordSessionKeyContext = {
-  ChatType?: string;
-  From?: string;
-  SenderId?: string;
-};
-
-function normalizeDiscordChatType(raw?: string): "direct" | "group" | "channel" | undefined {
-  const normalized = (raw ?? "").trim().toLowerCase();
-  if (!normalized) {
-    return undefined;
-  }
-  if (normalized === "dm") {
-    return "direct";
-  }
-  if (normalized === "group" || normalized === "channel" || normalized === "direct") {
-    return normalized;
-  }
-  return undefined;
-}
+import { normalizeChatType } from "openclaw/plugin-sdk/channel-runtime";
+import type { MsgContext } from "openclaw/plugin-sdk/reply-runtime";
 
 export function normalizeExplicitDiscordSessionKey(
   sessionKey: string,
-  ctx: DiscordSessionKeyContext,
+  ctx: Pick<MsgContext, "ChatType" | "From" | "SenderId">,
 ): string {
   let normalized = sessionKey.trim().toLowerCase();
-  if (normalizeDiscordChatType(ctx.ChatType) !== "direct") {
+  if (normalizeChatType(ctx.ChatType) !== "direct") {
     return normalized;
   }
 

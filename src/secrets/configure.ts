@@ -20,7 +20,7 @@ import {
 } from "./configure-plan.js";
 import { getSkippedExecRefStaticError } from "./exec-resolution-policy.js";
 import type { SecretsApplyPlan } from "./plan.js";
-import { getProviderEnvVars } from "./provider-env-vars.js";
+import { PROVIDER_ENV_VARS } from "./provider-env-vars.js";
 import {
   formatExecSecretRefIdValidationMessage,
   isValidExecSecretRefId,
@@ -248,7 +248,7 @@ function resolveSuggestedEnvSecretId(candidate: ConfigureCandidate): string | un
   if (!hintedProvider) {
     return undefined;
   }
-  const envCandidates = getProviderEnvVars(hintedProvider);
+  const envCandidates = PROVIDER_ENV_VARS[hintedProvider];
   if (!Array.isArray(envCandidates) || envCandidates.length === 0) {
     return undefined;
   }

@@ -1,21 +1,17 @@
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { createJiti } from "jiti";
 import type { ChannelPlugin } from "../channels/plugins/types.js";
-import { isChannelConfigured } from "../config/channel-configured.js";
 import type { OpenClawConfig } from "../config/config.js";
+import { isChannelConfigured } from "../config/plugin-auto-enable.js";
 import type { PluginInstallRecord } from "../config/types.plugins.js";
 import type { GatewayRequestHandler } from "../gateway/server-methods/types.js";
 import { openBoundaryFileSync } from "../infra/boundary-file-read.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
-import {
-  clearMemoryPromptSection,
-  getMemoryPromptSectionBuilder,
-  restoreMemoryPromptSection,
-} from "../memory/prompt-section.js";
 import { resolveUserPath } from "../utils.js";
 import { inspectBundleMcpRuntimeSupport } from "./bundle-mcp.js";
-import { clearPluginCommands } from "./command-registry-state.js";
+import { clearPluginCommands } from "./commands.js";
 import {
   applyTestPluginDefaults,
   normalizePluginsConfig,
@@ -35,16 +31,15 @@ import type { CreatePluginRuntimeOptions } from "./runtime/index.js";
 import type { PluginRuntime } from "./runtime/types.js";
 import { validateJsonSchemaValue } from "./schema-validator.js";
 import {
-  buildPluginLoaderAliasMap,
   buildPluginLoaderJitiOptions,
   listPluginSdkAliasCandidates,
   listPluginSdkExportedSubpaths,
-  resolveExtensionApiAlias,
+  resolveLoaderPackageRoot,
   resolvePluginSdkAliasCandidateOrder,
   resolvePluginSdkAliasFile,
-  resolvePluginRuntimeModulePath,
   resolvePluginSdkScopedAliasMap,
   shouldPreferNativeJiti,
+  type LoaderModuleResolveParams,
 } from "./sdk-alias.js";
 import type {
   OpenClawPluginDefinition,
@@ -76,33 +71,10 @@ export type PluginLoadOptions = {
    */
   preferSetupRuntimeForChannelPlugins?: boolean;
   activate?: boolean;
-  throwOnLoadError?: boolean;
-};
-
-export class PluginLoadFailureError extends Error {
-  readonly pluginIds: string[];
-  readonly registry: PluginRegistry;
-
-  constructor(registry: PluginRegistry) {
-    const failedPlugins = registry.plugins.filter((entry) => entry.status === "error");
-    const summary = failedPlugins
-      .map((entry) => `${entry.id}: ${entry.error ?? "unknown plugin load error"}`)
-      .join("; ");
-    super(`plugin load failed: ${summary}`);
-    this.name = "PluginLoadFailureError";
-    this.pluginIds = failedPlugins.map((entry) => entry.id);
-    this.registry = registry;
-  }
-}
-
-type CachedPluginState = {
-  registry: PluginRegistry;
-  memoryPromptBuilder: ReturnType<typeof getMemoryPromptSectionBuilder>;
 };
 
 const MAX_PLUGIN_REGISTRY_CACHE_ENTRIES = 128;
-let pluginRegistryCacheEntryCap = MAX_PLUGIN_REGISTRY_CACHE_ENTRIES;
-const registryCache = new Map<string, CachedPluginState>();
+const registryCache = new Map<string, PluginRegistry>();
 const openAllowlistWarningCache = new Set<string>();
 const LAZY_RUNTIME_REFLECTION_KEYS = [
   "version",
@@ -124,34 +96,59 @@ const LAZY_RUNTIME_REFLECTION_KEYS = [
 export function clearPluginLoaderCache(): void {
   registryCache.clear();
   openAllowlistWarningCache.clear();
-  clearMemoryPromptSection();
 }
 
 const defaultLogger = () => createSubsystemLogger("plugins");
 
+function resolveLoaderModulePath(params: LoaderModuleResolveParams = {}): string {
+  return params.modulePath ?? fileURLToPath(params.moduleUrl ?? import.meta.url);
+}
+
+const resolvePluginSdkAlias = (): string | null =>
+  resolvePluginSdkAliasFile({ srcFile: "root-alias.cjs", distFile: "root-alias.cjs" });
+
+function resolvePluginRuntimeModulePath(params: LoaderModuleResolveParams = {}): string | null {
+  try {
+    const modulePath = resolveLoaderModulePath(params);
+    const orderedKinds = resolvePluginSdkAliasCandidateOrder({
+      modulePath,
+      isProduction: process.env.NODE_ENV === "production",
+    });
+    const packageRoot = resolveLoaderPackageRoot({ ...params, modulePath });
+    const candidates = packageRoot
+      ? orderedKinds.map((kind) =>
+          kind === "src"
+            ? path.join(packageRoot, "src", "plugins", "runtime", "index.ts")
+            : path.join(packageRoot, "dist", "plugins", "runtime", "index.js"),
+        )
+      : [
+          path.join(path.dirname(modulePath), "runtime", "index.ts"),
+          path.join(path.dirname(modulePath), "runtime", "index.js"),
+        ];
+    for (const candidate of candidates) {
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
 export const __testing = {
   buildPluginLoaderJitiOptions,
-  buildPluginLoaderAliasMap,
   listPluginSdkAliasCandidates,
   listPluginSdkExportedSubpaths,
-  resolveExtensionApiAlias,
   resolvePluginSdkScopedAliasMap,
   resolvePluginSdkAliasCandidateOrder,
   resolvePluginSdkAliasFile,
   resolvePluginRuntimeModulePath,
   shouldPreferNativeJiti,
-  get maxPluginRegistryCacheEntries() {
-    return pluginRegistryCacheEntryCap;
-  },
-  setMaxPluginRegistryCacheEntriesForTest(value?: number) {
-    pluginRegistryCacheEntryCap =
-      typeof value === "number" && Number.isFinite(value) && value > 0
-        ? Math.max(1, Math.floor(value))
-        : MAX_PLUGIN_REGISTRY_CACHE_ENTRIES;
-  },
+  maxPluginRegistryCacheEntries: MAX_PLUGIN_REGISTRY_CACHE_ENTRIES,
 };
 
-function getCachedPluginRegistry(cacheKey: string): CachedPluginState | undefined {
+function getCachedPluginRegistry(cacheKey: string): PluginRegistry | undefined {
   const cached = registryCache.get(cacheKey);
   if (!cached) {
     return undefined;
@@ -162,12 +159,12 @@ function getCachedPluginRegistry(cacheKey: string): CachedPluginState | undefine
   return cached;
 }
 
-function setCachedPluginRegistry(cacheKey: string, state: CachedPluginState): void {
+function setCachedPluginRegistry(cacheKey: string, registry: PluginRegistry): void {
   if (registryCache.has(cacheKey)) {
     registryCache.delete(cacheKey);
   }
-  registryCache.set(cacheKey, state);
-  while (registryCache.size > pluginRegistryCacheEntryCap) {
+  registryCache.set(cacheKey, registry);
+  while (registryCache.size > MAX_PLUGIN_REGISTRY_CACHE_ENTRIES) {
     const oldestKey = registryCache.keys().next().value;
     if (!oldestKey) {
       break;
@@ -401,19 +398,6 @@ function recordPluginError(params: {
 
 function pushDiagnostics(diagnostics: PluginDiagnostic[], append: PluginDiagnostic[]) {
   diagnostics.push(...append);
-}
-
-function maybeThrowOnPluginLoadError(
-  registry: PluginRegistry,
-  throwOnLoadError: boolean | undefined,
-): void {
-  if (!throwOnLoadError) {
-    return;
-  }
-  if (!registry.plugins.some((entry) => entry.status === "error")) {
-    return;
-  }
-  throw new PluginLoadFailureError(registry);
 }
 
 type PathMatcher = {
@@ -705,35 +689,33 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
   if (cacheEnabled) {
     const cached = getCachedPluginRegistry(cacheKey);
     if (cached) {
-      restoreMemoryPromptSection(cached.memoryPromptBuilder);
       if (shouldActivate) {
-        activatePluginRegistry(cached.registry, cacheKey);
+        activatePluginRegistry(cached, cacheKey);
       }
-      return cached.registry;
+      return cached;
     }
   }
 
-  // Clear previously registered plugin state before reloading.
+  // Clear previously registered plugin commands before reloading.
   // Skip for non-activating (snapshot) loads to avoid wiping commands from other plugins.
   if (shouldActivate) {
     clearPluginCommands();
     clearPluginInteractiveHandlers();
-    clearMemoryPromptSection();
   }
 
   // Lazy: avoid creating the Jiti loader when all plugins are disabled (common in unit tests).
-  const jitiLoaders = new Map<string, ReturnType<typeof createJiti>>();
+  const jitiLoaders = new Map<boolean, ReturnType<typeof createJiti>>();
   const getJiti = (modulePath: string) => {
     const tryNative = shouldPreferNativeJiti(modulePath);
-    const aliasMap = buildPluginLoaderAliasMap(modulePath);
-    const cacheKey = JSON.stringify({
-      tryNative,
-      aliasMap: Object.entries(aliasMap).toSorted(([left], [right]) => left.localeCompare(right)),
-    });
-    const cached = jitiLoaders.get(cacheKey);
+    const cached = jitiLoaders.get(tryNative);
     if (cached) {
       return cached;
     }
+    const pluginSdkAlias = resolvePluginSdkAlias();
+    const aliasMap = {
+      ...(pluginSdkAlias ? { "openclaw/plugin-sdk": pluginSdkAlias } : {}),
+      ...resolvePluginSdkScopedAliasMap(),
+    };
     const loader = createJiti(import.meta.url, {
       ...buildPluginLoaderJitiOptions(aliasMap),
       // Source .ts runtime shims import sibling ".js" specifiers that only exist
@@ -742,7 +724,7 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
       // loading for the canonical built module graph.
       tryNative,
     });
-    jitiLoaders.set(cacheKey, loader);
+    jitiLoaders.set(tryNative, loader);
     return loader;
   };
 
@@ -1214,7 +1196,6 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
       hookPolicy: entry?.hooks,
       registrationMode,
     });
-    const previousMemoryPromptBuilder = getMemoryPromptSectionBuilder();
 
     try {
       const result = register(api);
@@ -1226,14 +1207,9 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
           message: "plugin register returned a promise; async registration is ignored",
         });
       }
-      // Snapshot loads should not replace process-global runtime prompt state.
-      if (!shouldActivate) {
-        restoreMemoryPromptSection(previousMemoryPromptBuilder);
-      }
       registry.plugins.push(record);
       seenIds.set(pluginId, candidate.origin);
     } catch (err) {
-      restoreMemoryPromptSection(previousMemoryPromptBuilder);
       recordPluginError({
         logger,
         registry,
@@ -1264,13 +1240,8 @@ export function loadOpenClawPlugins(options: PluginLoadOptions = {}): PluginRegi
     env,
   });
 
-  maybeThrowOnPluginLoadError(registry, options.throwOnLoadError);
-
   if (cacheEnabled) {
-    setCachedPluginRegistry(cacheKey, {
-      registry,
-      memoryPromptBuilder: getMemoryPromptSectionBuilder(),
-    });
+    setCachedPluginRegistry(cacheKey, registry);
   }
   if (shouldActivate) {
     activatePluginRegistry(registry, cacheKey);

@@ -65,271 +65,274 @@ For the generic Docker flow, see [Docker](/install/docker).
 
 ---
 
-<Steps>
-  <Step title="Install gcloud CLI (or use Console)">
-    **Option A: gcloud CLI** (recommended for automation)
+## 1) Install gcloud CLI (or use Console)
 
-    Install from [https://cloud.google.com/sdk/docs/install](https://cloud.google.com/sdk/docs/install)
+**Option A: gcloud CLI** (recommended for automation)
 
-    Initialize and authenticate:
+Install from [https://cloud.google.com/sdk/docs/install](https://cloud.google.com/sdk/docs/install)
 
-    ```bash
-    gcloud init
-    gcloud auth login
-    ```
+Initialize and authenticate:
 
-    **Option B: Cloud Console**
+```bash
+gcloud init
+gcloud auth login
+```
 
-    All steps can be done via the web UI at [https://console.cloud.google.com](https://console.cloud.google.com)
+**Option B: Cloud Console**
 
-  </Step>
+All steps can be done via the web UI at [https://console.cloud.google.com](https://console.cloud.google.com)
 
-  <Step title="Create a GCP project">
-    **CLI:**
+---
 
-    ```bash
-    gcloud projects create my-openclaw-project --name="OpenClaw Gateway"
-    gcloud config set project my-openclaw-project
-    ```
+## 2) Create a GCP project
 
-    Enable billing at [https://console.cloud.google.com/billing](https://console.cloud.google.com/billing) (required for Compute Engine).
+**CLI:**
 
-    Enable the Compute Engine API:
+```bash
+gcloud projects create my-openclaw-project --name="OpenClaw Gateway"
+gcloud config set project my-openclaw-project
+```
 
-    ```bash
-    gcloud services enable compute.googleapis.com
-    ```
+Enable billing at [https://console.cloud.google.com/billing](https://console.cloud.google.com/billing) (required for Compute Engine).
 
-    **Console:**
+Enable the Compute Engine API:
 
-    1. Go to IAM & Admin > Create Project
-    2. Name it and create
-    3. Enable billing for the project
-    4. Navigate to APIs & Services > Enable APIs > search "Compute Engine API" > Enable
+```bash
+gcloud services enable compute.googleapis.com
+```
 
-  </Step>
+**Console:**
 
-  <Step title="Create the VM">
-    **Machine types:**
+1. Go to IAM & Admin > Create Project
+2. Name it and create
+3. Enable billing for the project
+4. Navigate to APIs & Services > Enable APIs > search "Compute Engine API" > Enable
 
-    | Type      | Specs                    | Cost               | Notes                                        |
-    | --------- | ------------------------ | ------------------ | -------------------------------------------- |
-    | e2-medium | 2 vCPU, 4GB RAM          | ~$25/mo            | Most reliable for local Docker builds        |
-    | e2-small  | 2 vCPU, 2GB RAM          | ~$12/mo            | Minimum recommended for Docker build         |
-    | e2-micro  | 2 vCPU (shared), 1GB RAM | Free tier eligible | Often fails with Docker build OOM (exit 137) |
+---
 
-    **CLI:**
+## 3) Create the VM
 
-    ```bash
-    gcloud compute instances create openclaw-gateway \
-      --zone=us-central1-a \
-      --machine-type=e2-small \
-      --boot-disk-size=20GB \
-      --image-family=debian-12 \
-      --image-project=debian-cloud
-    ```
+**Machine types:**
 
-    **Console:**
+| Type      | Specs                    | Cost               | Notes                                        |
+| --------- | ------------------------ | ------------------ | -------------------------------------------- |
+| e2-medium | 2 vCPU, 4GB RAM          | ~$25/mo            | Most reliable for local Docker builds        |
+| e2-small  | 2 vCPU, 2GB RAM          | ~$12/mo            | Minimum recommended for Docker build         |
+| e2-micro  | 2 vCPU (shared), 1GB RAM | Free tier eligible | Often fails with Docker build OOM (exit 137) |
 
-    1. Go to Compute Engine > VM instances > Create instance
-    2. Name: `openclaw-gateway`
-    3. Region: `us-central1`, Zone: `us-central1-a`
-    4. Machine type: `e2-small`
-    5. Boot disk: Debian 12, 20GB
-    6. Create
+**CLI:**
 
-  </Step>
+```bash
+gcloud compute instances create openclaw-gateway \
+  --zone=us-central1-a \
+  --machine-type=e2-small \
+  --boot-disk-size=20GB \
+  --image-family=debian-12 \
+  --image-project=debian-cloud
+```
 
-  <Step title="SSH into the VM">
-    **CLI:**
+**Console:**
 
-    ```bash
-    gcloud compute ssh openclaw-gateway --zone=us-central1-a
-    ```
+1. Go to Compute Engine > VM instances > Create instance
+2. Name: `openclaw-gateway`
+3. Region: `us-central1`, Zone: `us-central1-a`
+4. Machine type: `e2-small`
+5. Boot disk: Debian 12, 20GB
+6. Create
 
-    **Console:**
+---
 
-    Click the "SSH" button next to your VM in the Compute Engine dashboard.
+## 4) SSH into the VM
 
-    Note: SSH key propagation can take 1-2 minutes after VM creation. If connection is refused, wait and retry.
+**CLI:**
 
-  </Step>
+```bash
+gcloud compute ssh openclaw-gateway --zone=us-central1-a
+```
 
-  <Step title="Install Docker (on the VM)">
-    ```bash
-    sudo apt-get update
-    sudo apt-get install -y git curl ca-certificates
-    curl -fsSL https://get.docker.com | sudo sh
-    sudo usermod -aG docker $USER
-    ```
+**Console:**
 
-    Log out and back in for the group change to take effect:
+Click the "SSH" button next to your VM in the Compute Engine dashboard.
 
-    ```bash
-    exit
-    ```
-
-    Then SSH back in:
-
-    ```bash
-    gcloud compute ssh openclaw-gateway --zone=us-central1-a
-    ```
-
-    Verify:
-
-    ```bash
-    docker --version
-    docker compose version
-    ```
-
-  </Step>
-
-  <Step title="Clone the OpenClaw repository">
-    ```bash
-    git clone https://github.com/openclaw/openclaw.git
-    cd openclaw
-    ```
-
-    This guide assumes you will build a custom image to guarantee binary persistence.
-
-  </Step>
-
-  <Step title="Create persistent host directories">
-    Docker containers are ephemeral.
-    All long-lived state must live on the host.
-
-    ```bash
-    mkdir -p ~/.openclaw
-    mkdir -p ~/.openclaw/workspace
-    ```
-
-  </Step>
-
-  <Step title="Configure environment variables">
-    Create `.env` in the repository root.
-
-    ```bash
-    OPENCLAW_IMAGE=openclaw:latest
-    OPENCLAW_GATEWAY_TOKEN=change-me-now
-    OPENCLAW_GATEWAY_BIND=lan
-    OPENCLAW_GATEWAY_PORT=18789
+Note: SSH key propagation can take 1-2 minutes after VM creation. If connection is refused, wait and retry.
 
-    OPENCLAW_CONFIG_DIR=/home/$USER/.openclaw
-    OPENCLAW_WORKSPACE_DIR=/home/$USER/.openclaw/workspace
+---
 
-    GOG_KEYRING_PASSWORD=change-me-now
-    XDG_CONFIG_HOME=/home/node/.openclaw
-    ```
+## 5) Install Docker (on the VM)
 
-    Generate strong secrets:
+```bash
+sudo apt-get update
+sudo apt-get install -y git curl ca-certificates
+curl -fsSL https://get.docker.com | sudo sh
+sudo usermod -aG docker $USER
+```
 
-    ```bash
-    openssl rand -hex 32
-    ```
+Log out and back in for the group change to take effect:
 
-    **Do not commit this file.**
+```bash
+exit
+```
 
-  </Step>
+Then SSH back in:
+
+```bash
+gcloud compute ssh openclaw-gateway --zone=us-central1-a
+```
+
+Verify:
+
+```bash
+docker --version
+docker compose version
+```
 
-  <Step title="Docker Compose configuration">
-    Create or update `docker-compose.yml`.
+---
 
-    ```yaml
-    services:
-      openclaw-gateway:
-        image: ${OPENCLAW_IMAGE}
-        build: .
-        restart: unless-stopped
-        env_file:
-          - .env
-        environment:
-          - HOME=/home/node
-          - NODE_ENV=production
-          - TERM=xterm-256color
-          - OPENCLAW_GATEWAY_BIND=${OPENCLAW_GATEWAY_BIND}
-          - OPENCLAW_GATEWAY_PORT=${OPENCLAW_GATEWAY_PORT}
-          - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN}
-          - GOG_KEYRING_PASSWORD=${GOG_KEYRING_PASSWORD}
-          - XDG_CONFIG_HOME=${XDG_CONFIG_HOME}
-          - PATH=/home/linuxbrew/.linuxbrew/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-        volumes:
-          - ${OPENCLAW_CONFIG_DIR}:/home/node/.openclaw
-          - ${OPENCLAW_WORKSPACE_DIR}:/home/node/.openclaw/workspace
-        ports:
-          # Recommended: keep the Gateway loopback-only on the VM; access via SSH tunnel.
-          # To expose it publicly, remove the `127.0.0.1:` prefix and firewall accordingly.
-          - "127.0.0.1:${OPENCLAW_GATEWAY_PORT}:18789"
-        command:
-          [
-            "node",
-            "dist/index.js",
-            "gateway",
-            "--bind",
-            "${OPENCLAW_GATEWAY_BIND}",
-            "--port",
-            "${OPENCLAW_GATEWAY_PORT}",
-            "--allow-unconfigured",
-          ]
-    ```
+## 6) Clone the OpenClaw repository
 
-    `--allow-unconfigured` is only for bootstrap convenience, it is not a replacement for a proper gateway configuration. Still set auth (`gateway.auth.token` or password) and use safe bind settings for your deployment.
+```bash
+git clone https://github.com/openclaw/openclaw.git
+cd openclaw
+```
 
-  </Step>
+This guide assumes you will build a custom image to guarantee binary persistence.
 
-  <Step title="Shared Docker VM runtime steps">
-    Use the shared runtime guide for the common Docker host flow:
+---
 
-    - [Bake required binaries into the image](/install/docker-vm-runtime#bake-required-binaries-into-the-image)
-    - [Build and launch](/install/docker-vm-runtime#build-and-launch)
-    - [What persists where](/install/docker-vm-runtime#what-persists-where)
-    - [Updates](/install/docker-vm-runtime#updates)
+## 7) Create persistent host directories
 
-  </Step>
+Docker containers are ephemeral.
+All long-lived state must live on the host.
 
-  <Step title="GCP-specific launch notes">
-    On GCP, if build fails with `Killed` or `exit code 137` during `pnpm install --frozen-lockfile`, the VM is out of memory. Use `e2-small` minimum, or `e2-medium` for more reliable first builds.
+```bash
+mkdir -p ~/.openclaw
+mkdir -p ~/.openclaw/workspace
+```
 
-    When binding to LAN (`OPENCLAW_GATEWAY_BIND=lan`), configure a trusted browser origin before continuing:
+---
 
-    ```bash
-    docker compose run --rm openclaw-cli config set gateway.controlUi.allowedOrigins '["http://127.0.0.1:18789"]' --strict-json
-    ```
+## 8) Configure environment variables
 
-    If you changed the gateway port, replace `18789` with your configured port.
+Create `.env` in the repository root.
 
-  </Step>
+```bash
+OPENCLAW_IMAGE=openclaw:latest
+OPENCLAW_GATEWAY_TOKEN=change-me-now
+OPENCLAW_GATEWAY_BIND=lan
+OPENCLAW_GATEWAY_PORT=18789
 
-  <Step title="Access from your laptop">
-    Create an SSH tunnel to forward the Gateway port:
+OPENCLAW_CONFIG_DIR=/home/$USER/.openclaw
+OPENCLAW_WORKSPACE_DIR=/home/$USER/.openclaw/workspace
 
-    ```bash
-    gcloud compute ssh openclaw-gateway --zone=us-central1-a -- -L 18789:127.0.0.1:18789
-    ```
+GOG_KEYRING_PASSWORD=change-me-now
+XDG_CONFIG_HOME=/home/node/.openclaw
+```
 
-    Open in your browser:
+Generate strong secrets:
 
-    `http://127.0.0.1:18789/`
+```bash
+openssl rand -hex 32
+```
 
-    Fetch a fresh tokenized dashboard link:
+**Do not commit this file.**
 
-    ```bash
-    docker compose run --rm openclaw-cli dashboard --no-open
-    ```
+---
 
-    Paste the token from that URL.
+## 9) Docker Compose configuration
 
-    If Control UI shows `unauthorized` or `disconnected (1008): pairing required`, approve the browser device:
+Create or update `docker-compose.yml`.
 
-    ```bash
-    docker compose run --rm openclaw-cli devices list
-    docker compose run --rm openclaw-cli devices approve <requestId>
-    ```
+```yaml
+services:
+  openclaw-gateway:
+    image: ${OPENCLAW_IMAGE}
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - HOME=/home/node
+      - NODE_ENV=production
+      - TERM=xterm-256color
+      - OPENCLAW_GATEWAY_BIND=${OPENCLAW_GATEWAY_BIND}
+      - OPENCLAW_GATEWAY_PORT=${OPENCLAW_GATEWAY_PORT}
+      - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN}
+      - GOG_KEYRING_PASSWORD=${GOG_KEYRING_PASSWORD}
+      - XDG_CONFIG_HOME=${XDG_CONFIG_HOME}
+      - PATH=/home/linuxbrew/.linuxbrew/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    volumes:
+      - ${OPENCLAW_CONFIG_DIR}:/home/node/.openclaw
+      - ${OPENCLAW_WORKSPACE_DIR}:/home/node/.openclaw/workspace
+    ports:
+      # Recommended: keep the Gateway loopback-only on the VM; access via SSH tunnel.
+      # To expose it publicly, remove the `127.0.0.1:` prefix and firewall accordingly.
+      - "127.0.0.1:${OPENCLAW_GATEWAY_PORT}:18789"
+    command:
+      [
+        "node",
+        "dist/index.js",
+        "gateway",
+        "--bind",
+        "${OPENCLAW_GATEWAY_BIND}",
+        "--port",
+        "${OPENCLAW_GATEWAY_PORT}",
+      ]
+```
 
-    Need the shared persistence and update reference again?
-    See [Docker VM Runtime](/install/docker-vm-runtime#what-persists-where) and [Docker VM Runtime updates](/install/docker-vm-runtime#updates).
+---
 
-  </Step>
-</Steps>
+## 10) Shared Docker VM runtime steps
+
+Use the shared runtime guide for the common Docker host flow:
+
+- [Bake required binaries into the image](/install/docker-vm-runtime#bake-required-binaries-into-the-image)
+- [Build and launch](/install/docker-vm-runtime#build-and-launch)
+- [What persists where](/install/docker-vm-runtime#what-persists-where)
+- [Updates](/install/docker-vm-runtime#updates)
+
+---
+
+## 11) GCP-specific launch notes
+
+On GCP, if build fails with `Killed` or `exit code 137` during `pnpm install --frozen-lockfile`, the VM is out of memory. Use `e2-small` minimum, or `e2-medium` for more reliable first builds.
+
+When binding to LAN (`OPENCLAW_GATEWAY_BIND=lan`), configure a trusted browser origin before continuing:
+
+```bash
+docker compose run --rm openclaw-cli config set gateway.controlUi.allowedOrigins '["http://127.0.0.1:18789"]' --strict-json
+```
+
+If you changed the gateway port, replace `18789` with your configured port.
+
+## 12) Access from your laptop
+
+Create an SSH tunnel to forward the Gateway port:
+
+```bash
+gcloud compute ssh openclaw-gateway --zone=us-central1-a -- -L 18789:127.0.0.1:18789
+```
+
+Open in your browser:
+
+`http://127.0.0.1:18789/`
+
+Fetch a fresh tokenized dashboard link:
+
+```bash
+docker compose run --rm openclaw-cli dashboard --no-open
+```
+
+Paste the token from that URL.
+
+If Control UI shows `unauthorized` or `disconnected (1008): pairing required`, approve the browser device:
+
+```bash
+docker compose run --rm openclaw-cli devices list
+docker compose run --rm openclaw-cli devices approve <requestId>
+```
+
+Need the shared persistence and update reference again?
+See [Docker VM Runtime](/install/docker-vm-runtime#what-persists-where) and [Docker VM Runtime updates](/install/docker-vm-runtime#updates).
 
 ---
 

@@ -1,9 +1,8 @@
-import { inspectTelegramAccount as inspectTelegramAccountImpl } from "../../extensions/telegram/api.js";
+import { inspectTelegramAccount as inspectTelegramAccountImpl } from "openclaw/plugin-sdk/telegram";
 
-export type { InspectedTelegramAccount } from "../../extensions/telegram/api.js";
+export type { InspectedTelegramAccount } from "openclaw/plugin-sdk/telegram";
 
-type InspectTelegramAccount =
-  typeof import("../../extensions/telegram/api.js").inspectTelegramAccount;
+type InspectTelegramAccount = typeof import("openclaw/plugin-sdk/telegram").inspectTelegramAccount;
 
 export function inspectTelegramAccount(
   ...args: Parameters<InspectTelegramAccount>

@@ -10,6 +10,7 @@ import {
   type TopLevelComponents,
 } from "@buape/carbon";
 import { ButtonStyle, Routes } from "discord-api-types/v10";
+import { normalizeMessageChannel } from "openclaw/plugin-sdk/channel-runtime";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-runtime";
 import { loadSessionStore, resolveStorePath } from "openclaw/plugin-sdk/config-runtime";
 import type { DiscordExecApprovalConfig } from "openclaw/plugin-sdk/config-runtime";
@@ -23,11 +24,7 @@ import type {
   ExecApprovalRequest,
   ExecApprovalResolved,
 } from "openclaw/plugin-sdk/infra-runtime";
-import {
-  normalizeAccountId,
-  normalizeMessageChannel,
-  resolveAgentIdFromSessionKey,
-} from "openclaw/plugin-sdk/routing";
+import { normalizeAccountId, resolveAgentIdFromSessionKey } from "openclaw/plugin-sdk/routing";
 import type { RuntimeEnv } from "openclaw/plugin-sdk/runtime-env";
 import { compileSafeRegex, testRegexWithBoundedInput } from "openclaw/plugin-sdk/security-runtime";
 import { logDebug, logError } from "openclaw/plugin-sdk/text-runtime";

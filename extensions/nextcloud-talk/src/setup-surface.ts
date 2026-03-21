@@ -1,13 +1,10 @@
-import type { ChannelSetupInput } from "openclaw/plugin-sdk/channel-setup";
+import type { ChannelSetupInput } from "openclaw/plugin-sdk/channel-runtime";
 import type { OpenClawConfig } from "openclaw/plugin-sdk/config-runtime";
+import { hasConfiguredSecretInput } from "openclaw/plugin-sdk/config-runtime";
 import { DEFAULT_ACCOUNT_ID } from "openclaw/plugin-sdk/routing";
-import { hasConfiguredSecretInput } from "openclaw/plugin-sdk/secret-input";
-import {
-  createStandardChannelSetupStatus,
-  formatDocsLink,
-  setSetupChannelEnabled,
-  type ChannelSetupWizard,
-} from "openclaw/plugin-sdk/setup";
+import { setSetupChannelEnabled } from "openclaw/plugin-sdk/setup";
+import { type ChannelSetupWizard } from "openclaw/plugin-sdk/setup";
+import { formatDocsLink } from "openclaw/plugin-sdk/setup";
 import { listNextcloudTalkAccountIds, resolveNextcloudTalkAccount } from "./accounts.js";
 import {
   clearNextcloudTalkAccountFields,
@@ -25,8 +22,7 @@ const CONFIGURE_API_FLAG = "__nextcloudTalkConfigureApiCredentials";
 export const nextcloudTalkSetupWizard: ChannelSetupWizard = {
   channel,
   stepOrder: "text-first",
-  status: createStandardChannelSetupStatus({
-    channelLabel: "Nextcloud Talk",
+  status: {
     configuredLabel: "configured",
     unconfiguredLabel: "needs setup",
     configuredHint: "configured",
@@ -38,7 +34,7 @@ export const nextcloudTalkSetupWizard: ChannelSetupWizard = {
         const account = resolveNextcloudTalkAccount({ cfg: cfg as CoreConfig, accountId });
         return Boolean(account.secret && account.baseUrl);
       }),
-  }),
+  },
   introNote: {
     title: "Nextcloud Talk bot setup",
     lines: [

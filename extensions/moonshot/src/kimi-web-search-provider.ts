@@ -1,11 +1,8 @@
 import { Type } from "@sinclair/typebox";
 import {
   buildSearchCacheKey,
-  buildUnsupportedSearchFilterResponse,
   DEFAULT_SEARCH_COUNT,
-  getScopedCredentialValue,
   MAX_SEARCH_COUNT,
-  mergeScopedSearchConfig,
   readCachedSearchPayload,
   readConfiguredSecretString,
   readNumberParam,
@@ -15,7 +12,6 @@ import {
   resolveSearchCacheTtlMs,
   resolveSearchCount,
   resolveSearchTimeoutSeconds,
-  setScopedCredentialValue,
   setProviderWebSearchPluginConfigValue,
   type SearchConfigRecord,
   type WebSearchProviderPlugin,
@@ -250,9 +246,22 @@ function createKimiToolDefinition(
     parameters: createKimiSchema(),
     execute: async (args) => {
       const params = args as Record<string, unknown>;
-      const unsupportedResponse = buildUnsupportedSearchFilterResponse(params, "kimi");
-      if (unsupportedResponse) {
-        return unsupportedResponse;
+      for (const name of ["country", "language", "freshness", "date_after", "date_before"]) {
+        if (readStringParam(params, name)) {
+          const label =
+            name === "country"
+              ? "country filtering"
+              : name === "language"
+                ? "language filtering"
+                : name === "freshness"
+                  ? "freshness filtering"
+                  : "date_after/date_before filtering";
+          return {
+            error: name.startsWith("date_") ? "unsupported_date_filter" : `unsupported_${name}`,
+            message: `${label} is not supported by the kimi provider. Only Brave and Perplexity support ${name === "country" ? "country filtering" : name === "language" ? "language filtering" : name === "freshness" ? "freshness" : "date filtering"}.`,
+            docs: "https://docs.openclaw.ai/tools/web",
+          };
+        }
       }
 
       const kimiConfig = resolveKimiConfig(searchConfig);
@@ -317,8 +326,7 @@ export function createKimiWebSearchProvider(): WebSearchProviderPlugin {
   return {
     id: "kimi",
     label: "Kimi (Moonshot)",
-    hint: "Requires Moonshot / Kimi API key · Moonshot web search",
-    credentialLabel: "Moonshot / Kimi API key",
+    hint: "Moonshot web search",
     envVars: ["KIMI_API_KEY", "MOONSHOT_API_KEY"],
     placeholder: "sk-...",
     signupUrl: "https://platform.moonshot.cn/",
@@ -326,9 +334,20 @@ export function createKimiWebSearchProvider(): WebSearchProviderPlugin {
     autoDetectOrder: 40,
     credentialPath: "plugins.entries.moonshot.config.webSearch.apiKey",
     inactiveSecretPaths: ["plugins.entries.moonshot.config.webSearch.apiKey"],
-    getCredentialValue: (searchConfig) => getScopedCredentialValue(searchConfig, "kimi"),
-    setCredentialValue: (searchConfigTarget, value) =>
-      setScopedCredentialValue(searchConfigTarget, "kimi", value),
+    getCredentialValue: (searchConfig) => {
+      const kimi = searchConfig?.kimi;
+      return kimi && typeof kimi === "object" && !Array.isArray(kimi)
+        ? (kimi as Record<string, unknown>).apiKey
+        : undefined;
+    },
+    setCredentialValue: (searchConfigTarget, value) => {
+      const scoped = searchConfigTarget.kimi;
+      if (!scoped || typeof scoped !== "object" || Array.isArray(scoped)) {
+        searchConfigTarget.kimi = { apiKey: value };
+        return;
+      }
+      (scoped as Record<string, unknown>).apiKey = value;
+    },
     getConfiguredCredentialValue: (config) =>
       resolveProviderWebSearchPluginConfig(config, "moonshot")?.apiKey,
     setConfiguredCredentialValue: (configTarget, value) => {
@@ -336,11 +355,20 @@ export function createKimiWebSearchProvider(): WebSearchProviderPlugin {
     },
     createTool: (ctx) =>
       createKimiToolDefinition(
-        mergeScopedSearchConfig(
-          ctx.searchConfig as SearchConfigRecord | undefined,
-          "kimi",
-          resolveProviderWebSearchPluginConfig(ctx.config, "moonshot"),
-        ) as SearchConfigRecord | undefined,
+        (() => {
+          const searchConfig = ctx.searchConfig as SearchConfigRecord | undefined;
+          const pluginConfig = resolveProviderWebSearchPluginConfig(ctx.config, "moonshot");
+          if (!pluginConfig) {
+            return searchConfig;
+          }
+          return {
+            ...(searchConfig ?? {}),
+            kimi: {
+              ...resolveKimiConfig(searchConfig),
+              ...pluginConfig,
+            },
+          } as SearchConfigRecord;
+        })(),
       ),
   };
 }

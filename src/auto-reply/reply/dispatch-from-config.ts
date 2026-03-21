@@ -6,10 +6,13 @@ import {
 } from "../../bindings/records.js";
 import { shouldSuppressLocalExecApprovalPrompt } from "../../channels/plugins/exec-approval-local.js";
 import type { OpenClawConfig } from "../../config/config.js";
-import { parseSessionThreadInfo } from "../../config/sessions/delivery-info.js";
-import { resolveStorePath } from "../../config/sessions/paths.js";
-import { loadSessionStore, resolveSessionStoreEntry } from "../../config/sessions/store.js";
-import type { SessionEntry } from "../../config/sessions/types.js";
+import {
+  loadSessionStore,
+  parseSessionThreadInfo,
+  resolveSessionStoreEntry,
+  resolveStorePath,
+  type SessionEntry,
+} from "../../config/sessions.js";
 import { logVerbose } from "../../globals.js";
 import { fireAndForgetHook } from "../../hooks/fire-and-forget.js";
 import { createInternalHookEvent, triggerInternalHook } from "../../hooks/internal-hooks.js";
@@ -38,46 +41,18 @@ import {
 } from "../../plugins/conversation-binding.js";
 import { getGlobalHookRunner, getGlobalPluginRegistry } from "../../plugins/hook-runner-global.js";
 import { resolveSendPolicy } from "../../sessions/send-policy.js";
-import { normalizeTtsAutoMode, resolveConfiguredTtsMode } from "../../tts/tts-config.js";
+import { maybeApplyTtsToPayload, normalizeTtsAutoMode, resolveTtsConfig } from "../../tts/tts.js";
 import { INTERNAL_MESSAGE_CHANNEL, normalizeMessageChannel } from "../../utils/message-channel.js";
+import { getReplyFromConfig } from "../reply.js";
 import type { FinalizedMsgContext } from "../templating.js";
-import type { BlockReplyContext, GetReplyOptions, ReplyPayload } from "../types.js";
+import type { GetReplyOptions, ReplyPayload } from "../types.js";
+import { formatAbortReplyText, tryFastAbortFromMessage } from "./abort.js";
+import { shouldBypassAcpDispatchForCommand, tryDispatchAcpReply } from "./dispatch-acp.js";
 import { shouldSkipDuplicateInbound } from "./inbound-dedupe.js";
 import type { ReplyDispatcher, ReplyDispatchKind } from "./reply-dispatcher.js";
+import { shouldSuppressReasoningPayload } from "./reply-payloads.js";
+import { isRoutableChannel, routeReply } from "./route-reply.js";
 import { resolveRunTypingPolicy } from "./typing-policy.js";
-
-let routeReplyRuntimePromise: Promise<typeof import("./route-reply.runtime.js")> | null = null;
-let getReplyFromConfigRuntimePromise: Promise<
-  typeof import("./get-reply-from-config.runtime.js")
-> | null = null;
-let abortRuntimePromise: Promise<typeof import("./abort.runtime.js")> | null = null;
-let dispatchAcpRuntimePromise: Promise<typeof import("./dispatch-acp.runtime.js")> | null = null;
-let ttsRuntimePromise: Promise<typeof import("../../tts/tts.runtime.js")> | null = null;
-
-function loadRouteReplyRuntime() {
-  routeReplyRuntimePromise ??= import("./route-reply.runtime.js");
-  return routeReplyRuntimePromise;
-}
-
-function loadGetReplyFromConfigRuntime() {
-  getReplyFromConfigRuntimePromise ??= import("./get-reply-from-config.runtime.js");
-  return getReplyFromConfigRuntimePromise;
-}
-
-function loadAbortRuntime() {
-  abortRuntimePromise ??= import("./abort.runtime.js");
-  return abortRuntimePromise;
-}
-
-function loadDispatchAcpRuntime() {
-  dispatchAcpRuntimePromise ??= import("./dispatch-acp.runtime.js");
-  return dispatchAcpRuntimePromise;
-}
-
-function loadTtsRuntime() {
-  ttsRuntimePromise ??= import("../../tts/tts.runtime.js");
-  return ttsRuntimePromise;
-}
 
 const AUDIO_PLACEHOLDER_RE = /^<media:audio>(\s*\([^)]*\))?$/i;
 const AUDIO_HEADER_RE = /^\[Audio\b/i;
@@ -151,7 +126,7 @@ export async function dispatchReplyFromConfig(params: {
   cfg: OpenClawConfig;
   dispatcher: ReplyDispatcher;
   replyOptions?: Omit<GetReplyOptions, "onToolResult" | "onBlockReply">;
-  replyResolver?: typeof import("./get-reply-from-config.runtime.js").getReplyFromConfig;
+  replyResolver?: typeof getReplyFromConfig;
 }): Promise<DispatchFromConfigResult> {
   const { ctx, cfg, dispatcher } = params;
   const diagnosticsEnabled = isDiagnosticsEnabled(cfg);
@@ -255,10 +230,9 @@ export async function dispatchReplyFromConfig(params: {
     currentSurface === INTERNAL_MESSAGE_CHANNEL &&
     (surfaceChannel === INTERNAL_MESSAGE_CHANNEL || !surfaceChannel) &&
     ctx.ExplicitDeliverRoute !== true;
-  const routeReplyRuntime = await loadRouteReplyRuntime();
   const shouldRouteToOriginating = Boolean(
     !isInternalWebchatTurn &&
-    routeReplyRuntime.isRoutableChannel(originatingChannel) &&
+    isRoutableChannel(originatingChannel) &&
     originatingTo &&
     originatingChannel !== currentSurface,
   );
@@ -285,7 +259,7 @@ export async function dispatchReplyFromConfig(params: {
     if (abortSignal?.aborted) {
       return;
     }
-    const result = await routeReplyRuntime.routeReply({
+    const result = await routeReply({
       payload,
       channel: originatingChannel,
       to: originatingTo,
@@ -308,7 +282,7 @@ export async function dispatchReplyFromConfig(params: {
     mode: "additive" | "terminal",
   ): Promise<boolean> => {
     if (shouldRouteToOriginating && originatingChannel && originatingTo) {
-      const result = await routeReplyRuntime.routeReply({
+      const result = await routeReply({
         payload,
         channel: originatingChannel,
         to: originatingTo,
@@ -444,16 +418,15 @@ export async function dispatchReplyFromConfig(params: {
   markProcessing();
 
   try {
-    const abortRuntime = await loadAbortRuntime();
-    const fastAbort = await abortRuntime.tryFastAbortFromMessage({ ctx, cfg });
+    const fastAbort = await tryFastAbortFromMessage({ ctx, cfg });
     if (fastAbort.handled) {
       const payload = {
-        text: abortRuntime.formatAbortReplyText(fastAbort.stoppedSubagents),
+        text: formatAbortReplyText(fastAbort.stoppedSubagents),
       } satisfies ReplyPayload;
       let queuedFinal = false;
       let routedFinalCount = 0;
       if (shouldRouteToOriginating && originatingChannel && originatingTo) {
-        const result = await routeReplyRuntime.routeReply({
+        const result = await routeReply({
           payload,
           channel: originatingChannel,
           to: originatingTo,
@@ -483,8 +456,7 @@ export async function dispatchReplyFromConfig(params: {
       return { queuedFinal, counts };
     }
 
-    const dispatchAcpRuntime = await loadDispatchAcpRuntime();
-    const bypassAcpForCommand = dispatchAcpRuntime.shouldBypassAcpDispatchForCommand(ctx, cfg);
+    const bypassAcpForCommand = shouldBypassAcpDispatchForCommand(ctx, cfg);
 
     const sendPolicy = resolveSendPolicy({
       cfg,
@@ -509,12 +481,11 @@ export async function dispatchReplyFromConfig(params: {
     }
 
     const shouldSendToolSummaries = ctx.ChatType !== "group" && ctx.CommandSource !== "native";
-    const acpDispatch = await dispatchAcpRuntime.tryDispatchAcpReply({
+    const acpDispatch = await tryDispatchAcpReply({
       ctx,
       cfg,
       dispatcher,
       sessionKey: acpDispatchSessionKey,
-      abortSignal: params.replyOptions?.abortSignal,
       inboundAudio,
       sessionTtsAuto,
       ttsChannel,
@@ -536,7 +507,6 @@ export async function dispatchReplyFromConfig(params: {
     // TTS audio separately from the accumulated block content.
     let accumulatedBlockText = "";
     let blockCount = 0;
-    const { maybeApplyTtsToPayload } = await loadTtsRuntime();
 
     const resolveToolDeliveryPayload = (payload: ReplyPayload): ReplyPayload | null => {
       if (
@@ -576,9 +546,7 @@ export async function dispatchReplyFromConfig(params: {
       systemEvent: shouldRouteToOriginating,
     });
 
-    const replyResolver =
-      params.replyResolver ?? (await loadGetReplyFromConfigRuntime()).getReplyFromConfig;
-    const replyResult = await replyResolver(
+    const replyResult = await (params.replyResolver ?? getReplyFromConfig)(
       ctx,
       {
         ...params.replyOptions,
@@ -606,18 +574,16 @@ export async function dispatchReplyFromConfig(params: {
           };
           return run();
         },
-        onBlockReply: (payload: ReplyPayload, context?: BlockReplyContext) => {
+        onBlockReply: (payload: ReplyPayload, context) => {
           const run = async () => {
             // Suppress reasoning payloads — channels using this generic dispatch
             // path (WhatsApp, web, etc.) do not have a dedicated reasoning lane.
             // Telegram has its own dispatch path that handles reasoning splitting.
-            if (payload.isReasoning === true) {
+            if (shouldSuppressReasoningPayload(payload)) {
               return;
             }
-            // Accumulate block text for TTS generation after streaming.
-            // Exclude compaction status notices — they are informational UI
-            // signals and must not be synthesised into the spoken reply.
-            if (payload.text && !payload.isCompactionNotice) {
+            // Accumulate block text for TTS generation after streaming
+            if (payload.text) {
               if (accumulatedBlockText.length > 0) {
                 accumulatedBlockText += "\n";
               }
@@ -648,12 +614,11 @@ export async function dispatchReplyFromConfig(params: {
       // Command handling prepared a trailing prompt after ACP in-place reset.
       // Route that tail through ACP now (same turn) instead of embedded dispatch.
       ctx.AcpDispatchTailAfterReset = false;
-      const acpTailDispatch = await dispatchAcpRuntime.tryDispatchAcpReply({
+      const acpTailDispatch = await tryDispatchAcpReply({
         ctx,
         cfg,
         dispatcher,
         sessionKey: acpDispatchSessionKey,
-        abortSignal: params.replyOptions?.abortSignal,
         inboundAudio,
         sessionTtsAuto,
         ttsChannel,
@@ -678,7 +643,7 @@ export async function dispatchReplyFromConfig(params: {
     for (const reply of replies) {
       // Suppress reasoning payloads from channel delivery — channels using this
       // generic dispatch path do not have a dedicated reasoning lane.
-      if (reply.isReasoning === true) {
+      if (shouldSuppressReasoningPayload(reply)) {
         continue;
       }
       const ttsReply = await maybeApplyTtsToPayload({
@@ -691,7 +656,7 @@ export async function dispatchReplyFromConfig(params: {
       });
       if (shouldRouteToOriginating && originatingChannel && originatingTo) {
         // Route final reply to originating channel.
-        const result = await routeReplyRuntime.routeReply({
+        const result = await routeReply({
           payload: ttsReply,
           channel: originatingChannel,
           to: originatingTo,
@@ -716,7 +681,7 @@ export async function dispatchReplyFromConfig(params: {
       }
     }
 
-    const ttsMode = resolveConfiguredTtsMode(cfg);
+    const ttsMode = resolveTtsConfig(cfg).mode ?? "final";
     // Generate TTS-only reply after block streaming completes (when there's no final reply).
     // This handles the case where block streaming succeeds and drops final payloads,
     // but we still want TTS audio to be generated from the accumulated block content.
@@ -743,7 +708,7 @@ export async function dispatchReplyFromConfig(params: {
             audioAsVoice: ttsSyntheticReply.audioAsVoice,
           };
           if (shouldRouteToOriginating && originatingChannel && originatingTo) {
-            const result = await routeReplyRuntime.routeReply({
+            const result = await routeReply({
               payload: ttsOnlyPayload,
               channel: originatingChannel,
               to: originatingTo,

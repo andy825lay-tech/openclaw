@@ -544,15 +544,6 @@ function registerEventHandlers(
             }),
           },
         };
-        const syntheticMessageId = syntheticEvent.message.message_id;
-        if (await hasProcessedFeishuMessage(syntheticMessageId, accountId, log)) {
-          log(`feishu[${accountId}]: dropping duplicate bot-menu event for ${syntheticMessageId}`);
-          return;
-        }
-        if (!tryBeginFeishuMessageProcessing(syntheticMessageId, accountId)) {
-          log(`feishu[${accountId}]: dropping in-flight bot-menu event for ${syntheticMessageId}`);
-          return;
-        }
         const handleLegacyMenu = () =>
           handleFeishuMessage({
             cfg,
@@ -562,7 +553,6 @@ function registerEventHandlers(
             runtime,
             chatHistories,
             accountId,
-            processingClaimHeld: true,
           });
 
         const promise = maybeHandleFeishuQuickActionMenu({
@@ -571,19 +561,12 @@ function registerEventHandlers(
           operatorOpenId,
           runtime,
           accountId,
-        })
-          .then(async (handledMenu) => {
-            if (handledMenu) {
-              await recordProcessedFeishuMessage(syntheticMessageId, accountId, log);
-              releaseFeishuMessageProcessing(syntheticMessageId, accountId);
-              return;
-            }
-            return await handleLegacyMenu();
-          })
-          .catch((err) => {
-            releaseFeishuMessageProcessing(syntheticMessageId, accountId);
-            throw err;
-          });
+        }).then((handledMenu) => {
+          if (handledMenu) {
+            return;
+          }
+          return handleLegacyMenu();
+        });
         if (fireAndForget) {
           promise.catch((err) => {
             error(`feishu[${accountId}]: error handling bot menu event: ${String(err)}`);

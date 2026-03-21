@@ -1,4 +1,4 @@
-// Private ACPX runtime backend helpers for bundled extensions.
+// Public ACPX runtime backend helpers.
 // Keep this surface narrow and limited to the ACP runtime/backend contract.
 
 export type { AcpRuntimeErrorCode } from "../acp/runtime/errors.js";

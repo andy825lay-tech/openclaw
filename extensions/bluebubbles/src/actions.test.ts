@@ -1,3 +1,4 @@
+import type { OpenClawConfig } from "openclaw/plugin-sdk/bluebubbles";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { bluebubblesMessageActions } from "./actions.js";
 import { sendBlueBubblesAttachment } from "./attachments.js";
@@ -5,7 +6,6 @@ import { editBlueBubblesMessage, setGroupIconBlueBubbles } from "./chat.js";
 import { resolveBlueBubblesMessageId } from "./monitor.js";
 import { getCachedBlueBubblesPrivateApiStatus } from "./probe.js";
 import { sendBlueBubblesReaction } from "./reactions.js";
-import type { OpenClawConfig } from "./runtime-api.js";
 import { resolveChatGuidForTarget, sendMessageBlueBubbles } from "./send.js";
 
 vi.mock("./accounts.js", async () => {

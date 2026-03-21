@@ -1,6 +1,6 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { withPathResolutionEnv } from "../test-utils/env.js";
+import { withEnv } from "../test-utils/env.js";
 import { formatPluginSourceForTable, resolvePluginSourceRoots } from "./source-display.js";
 
 function createPluginSourceRoots() {
@@ -63,16 +63,22 @@ describe("formatPluginSourceForTable", () => {
   });
 
   it("resolves source roots from an explicit env override", () => {
+    const ignoredHome = path.resolve(path.sep, "tmp", "ignored-home");
     const homeDir = path.resolve(path.sep, "tmp", "openclaw-home");
-    const roots = withPathResolutionEnv(
-      homeDir,
+    const roots = withEnv(
       {
-        OPENCLAW_BUNDLED_PLUGINS_DIR: "~/bundled",
-        OPENCLAW_STATE_DIR: "~/state",
+        OPENCLAW_BUNDLED_PLUGINS_DIR: path.join(ignoredHome, "ignored-bundled"),
+        OPENCLAW_STATE_DIR: path.join(ignoredHome, "ignored-state"),
+        HOME: ignoredHome,
       },
-      (env) =>
+      () =>
         resolvePluginSourceRoots({
-          env,
+          env: {
+            ...process.env,
+            HOME: homeDir,
+            OPENCLAW_BUNDLED_PLUGINS_DIR: "~/bundled",
+            OPENCLAW_STATE_DIR: "~/state",
+          },
           workspaceDir: "~/ws",
         }),
     );

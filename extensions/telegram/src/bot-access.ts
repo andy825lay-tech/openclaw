@@ -2,8 +2,8 @@ import {
   firstDefined,
   isSenderIdAllowed,
   mergeDmAllowFromSources,
-  type AllowlistMatch,
-} from "openclaw/plugin-sdk/allow-from";
+} from "openclaw/plugin-sdk/channel-runtime";
+import type { AllowlistMatch } from "openclaw/plugin-sdk/channel-runtime";
 import { createSubsystemLogger } from "openclaw/plugin-sdk/runtime-env";
 
 export type NormalizedAllowFrom = {

@@ -1,11 +1,8 @@
 import type { ChannelId } from "../channels/plugins/types.js";
 import {
   CHANNEL_IDS,
-  listRegisteredChannelPluginAliases,
-  listRegisteredChannelPluginIds,
   listChatChannelAliases,
   normalizeChatChannelId,
-  normalizeAnyChannelId,
 } from "../channels/registry.js";
 import {
   GATEWAY_CLIENT_MODES,
@@ -18,6 +15,20 @@ import {
 
 export const INTERNAL_MESSAGE_CHANNEL = "webchat" as const;
 export type InternalMessageChannel = typeof INTERNAL_MESSAGE_CHANNEL;
+const REGISTRY_STATE = Symbol.for("openclaw.pluginRegistryState");
+
+type PluginRegistryStateLike = {
+  registry?: {
+    channels?: Array<{
+      plugin: {
+        id: string;
+        meta: {
+          aliases?: string[];
+        };
+      };
+    }>;
+  } | null;
+};
 
 const MARKDOWN_CAPABLE_CHANNELS = new Set<string>([
   "slack",
@@ -66,15 +77,41 @@ export function normalizeMessageChannel(raw?: string | null): string | undefined
   if (builtIn) {
     return builtIn;
   }
-  return normalizeAnyChannelId(normalized) ?? normalized;
+  const channels =
+    (
+      globalThis as typeof globalThis & {
+        [REGISTRY_STATE]?: PluginRegistryStateLike;
+      }
+    )[REGISTRY_STATE]?.registry?.channels ?? [];
+  const pluginMatch = channels.find((entry) => {
+    if (entry.plugin.id.toLowerCase() === normalized) {
+      return true;
+    }
+    return (entry.plugin.meta.aliases ?? []).some(
+      (alias) => alias.trim().toLowerCase() === normalized,
+    );
+  });
+  return pluginMatch?.plugin.id ?? normalized;
 }
 
 const listPluginChannelIds = (): string[] => {
-  return listRegisteredChannelPluginIds();
+  const channels =
+    (
+      globalThis as typeof globalThis & {
+        [REGISTRY_STATE]?: PluginRegistryStateLike;
+      }
+    )[REGISTRY_STATE]?.registry?.channels ?? [];
+  return channels.map((entry) => entry.plugin.id);
 };
 
 const listPluginChannelAliases = (): string[] => {
-  return listRegisteredChannelPluginAliases();
+  const channels =
+    (
+      globalThis as typeof globalThis & {
+        [REGISTRY_STATE]?: PluginRegistryStateLike;
+      }
+    )[REGISTRY_STATE]?.registry?.channels ?? [];
+  return channels.flatMap((entry) => entry.plugin.meta.aliases ?? []);
 };
 
 export const listDeliverableMessageChannels = (): ChannelId[] =>

@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { runSetupWizardFinalize } from "../../test/helpers/extensions/setup-wizard.js";
 import { createOptionalChannelSetupSurface } from "./channel-setup.js";
 
 describe("createOptionalChannelSetupSurface", () => {
@@ -22,13 +21,17 @@ describe("createOptionalChannelSetupSurface", () => {
     expect(setup.setupWizard.channel).toBe("example");
     expect(setup.setupWizard.status.unconfiguredHint).toContain("/channels/example");
     await expect(
-      runSetupWizardFinalize({
-        finalize: setup.setupWizard.finalize,
+      setup.setupWizard.finalize?.({
+        cfg: {},
+        accountId: "default",
+        credentialValues: {},
         runtime: {
           log: () => {},
           error: () => {},
           exit: async () => {},
         },
+        prompter: {} as never,
+        forceAllowFrom: false,
       }),
     ).rejects.toThrow("@openclaw/example");
   });

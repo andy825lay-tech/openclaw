@@ -6,7 +6,6 @@ import {
   type SafeBinProfileFixture,
   type SafeBinProfileFixtures,
 } from "./exec-safe-bin-policy.js";
-import { normalizeSafeBinName } from "./exec-safe-bin-semantics.js";
 import {
   getTrustedSafeBinDirs,
   listWritableExplicitTrustedSafeBinDirs,
@@ -59,6 +58,16 @@ const INTERPRETER_LIKE_PATTERNS = [
   /^php\d+(?:\.\d+)?$/,
   /^node\d+(?:\.\d+)?$/,
 ];
+
+function normalizeSafeBinName(raw: string): string {
+  const trimmed = raw.trim().toLowerCase();
+  if (!trimmed) {
+    return "";
+  }
+  const tail = trimmed.split(/[\\/]/).at(-1);
+  const normalized = tail ?? trimmed;
+  return normalized.replace(/\.(?:exe|cmd|bat|com)$/i, "");
+}
 
 export function isInterpreterLikeSafeBin(raw: string): boolean {
   const normalized = normalizeSafeBinName(raw);

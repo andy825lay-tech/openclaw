@@ -7,13 +7,8 @@ const registerFeishuWikiToolsMock = vi.hoisted(() => vi.fn());
 const registerFeishuDriveToolsMock = vi.hoisted(() => vi.fn());
 const registerFeishuPermToolsMock = vi.hoisted(() => vi.fn());
 const registerFeishuBitableToolsMock = vi.hoisted(() => vi.fn());
-const feishuPluginMock = vi.hoisted(() => ({ id: "feishu-test-plugin" }));
 const setFeishuRuntimeMock = vi.hoisted(() => vi.fn());
 const registerFeishuSubagentHooksMock = vi.hoisted(() => vi.fn());
-
-vi.mock("./src/channel.js", () => ({
-  feishuPlugin: feishuPluginMock,
-}));
 
 vi.mock("./src/docx.js", () => ({
   registerFeishuDocTools: registerFeishuDocToolsMock,
@@ -63,7 +58,6 @@ describe("feishu plugin register", () => {
 
     expect(setFeishuRuntimeMock).toHaveBeenCalledWith(api.runtime);
     expect(registerChannel).toHaveBeenCalledTimes(1);
-    expect(registerChannel).toHaveBeenCalledWith({ plugin: feishuPluginMock });
     expect(registerFeishuSubagentHooksMock).toHaveBeenCalledWith(api);
     expect(registerFeishuDocToolsMock).toHaveBeenCalledWith(api);
     expect(registerFeishuChatToolsMock).toHaveBeenCalledWith(api);

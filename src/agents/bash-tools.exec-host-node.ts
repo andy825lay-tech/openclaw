@@ -8,10 +8,6 @@ import {
   requiresExecApproval,
   resolveExecApprovalsFromFile,
 } from "../infra/exec-approvals.js";
-import {
-  describeInterpreterInlineEval,
-  detectInterpreterInlineEvalArgv,
-} from "../infra/exec-inline-eval.js";
 import { detectCommandObfuscation } from "../infra/exec-obfuscation-detect.js";
 import { buildNodeShellCommand } from "../infra/node-shell.js";
 import { parsePreparedSystemRunPayload } from "../infra/system-run-approval-context.js";
@@ -46,7 +42,6 @@ export type ExecuteNodeHostCommandParams = {
   agentId?: string;
   security: ExecSecurity;
   ask: ExecAsk;
-  strictInlineEval?: boolean;
   timeoutSec?: number;
   defaultTimeoutSec: number;
   approvalRunningNoticeMs: number;
@@ -134,21 +129,6 @@ export async function executeNodeHostCommand(
   });
   let analysisOk = baseAllowlistEval.analysisOk;
   let allowlistSatisfied = false;
-  const inlineEvalHit =
-    params.strictInlineEval === true
-      ? (baseAllowlistEval.segments
-          .map((segment) =>
-            detectInterpreterInlineEvalArgv(segment.resolution?.effectiveArgv ?? segment.argv),
-          )
-          .find((entry) => entry !== null) ?? null)
-      : null;
-  if (inlineEvalHit) {
-    params.warnings.push(
-      `Warning: strict inline-eval mode requires explicit approval for ${describeInterpreterInlineEval(
-        inlineEvalHit,
-      )}.`,
-    );
-  }
   if (hostAsk === "on-miss" && hostSecurity === "allowlist" && analysisOk) {
     try {
       const approvalsSnapshot = await callGatewayTool<{ file: string }>(
@@ -196,9 +176,7 @@ export async function executeNodeHostCommand(
       security: hostSecurity,
       analysisOk,
       allowlistSatisfied,
-    }) ||
-    inlineEvalHit !== null ||
-    obfuscation.detected;
+    }) || obfuscation.detected;
   const invokeTimeoutMs = Math.max(
     10_000,
     (typeof params.timeoutSec === "number" ? params.timeoutSec : params.defaultTimeoutSec) * 1000 +
@@ -222,10 +200,7 @@ export async function executeNodeHostCommand(
         agentId: runAgentId,
         sessionKey: runSessionKey,
         approved: approvedByAsk,
-        approvalDecision:
-          approvalDecision === "allow-always" && inlineEvalHit !== null
-            ? "allow-once"
-            : (approvalDecision ?? undefined),
+        approvalDecision: approvalDecision ?? undefined,
         runId: runId ?? undefined,
         suppressNotifyOnExit: suppressNotifyOnExit === true ? true : undefined,
       },

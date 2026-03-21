@@ -1,4 +1,4 @@
-import { resolveGlobalDedupeCache } from "openclaw/plugin-sdk/infra-runtime";
+import { resolveGlobalMap } from "openclaw/plugin-sdk/text-runtime";
 
 /**
  * In-memory cache of Slack threads the bot has participated in.
@@ -14,13 +14,27 @@ const MAX_ENTRIES = 5000;
  * auto-reply gating does not diverge between prepare/dispatch call paths.
  */
 const SLACK_THREAD_PARTICIPATION_KEY = Symbol.for("openclaw.slackThreadParticipation");
-const threadParticipation = resolveGlobalDedupeCache(SLACK_THREAD_PARTICIPATION_KEY, {
-  ttlMs: TTL_MS,
-  maxSize: MAX_ENTRIES,
-});
+
+const threadParticipation = resolveGlobalMap<string, number>(SLACK_THREAD_PARTICIPATION_KEY);
 
 function makeKey(accountId: string, channelId: string, threadTs: string): string {
   return `${accountId}:${channelId}:${threadTs}`;
+}
+
+function evictExpired(): void {
+  const now = Date.now();
+  for (const [key, timestamp] of threadParticipation) {
+    if (now - timestamp > TTL_MS) {
+      threadParticipation.delete(key);
+    }
+  }
+}
+
+function evictOldest(): void {
+  const oldest = threadParticipation.keys().next().value;
+  if (oldest) {
+    threadParticipation.delete(oldest);
+  }
 }
 
 export function recordSlackThreadParticipation(
@@ -31,7 +45,13 @@ export function recordSlackThreadParticipation(
   if (!accountId || !channelId || !threadTs) {
     return;
   }
-  threadParticipation.check(makeKey(accountId, channelId, threadTs));
+  if (threadParticipation.size >= MAX_ENTRIES) {
+    evictExpired();
+  }
+  if (threadParticipation.size >= MAX_ENTRIES) {
+    evictOldest();
+  }
+  threadParticipation.set(makeKey(accountId, channelId, threadTs), Date.now());
 }
 
 export function hasSlackThreadParticipation(
@@ -42,7 +62,16 @@ export function hasSlackThreadParticipation(
   if (!accountId || !channelId || !threadTs) {
     return false;
   }
-  return threadParticipation.peek(makeKey(accountId, channelId, threadTs));
+  const key = makeKey(accountId, channelId, threadTs);
+  const timestamp = threadParticipation.get(key);
+  if (timestamp == null) {
+    return false;
+  }
+  if (Date.now() - timestamp > TTL_MS) {
+    threadParticipation.delete(key);
+    return false;
+  }
+  return true;
 }
 
 export function clearSlackThreadParticipationCache(): void {

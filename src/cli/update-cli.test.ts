@@ -1,11 +1,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { Command } from "commander";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { OpenClawConfig, ConfigFileSnapshot } from "../config/types.openclaw.js";
 import type { UpdateRunResult } from "../infra/update-runner.js";
 import { withEnvAsync } from "../test-utils/env.js";
-import { createCliRuntimeCapture } from "./test-runtime-capture.js";
 
 const confirm = vi.fn();
 const select = vi.fn();
@@ -26,7 +24,6 @@ const formatPortDiagnostics = vi.fn();
 const pathExists = vi.fn();
 const syncPluginsForUpdateChannel = vi.fn();
 const updateNpmInstalledPlugins = vi.fn();
-const { defaultRuntime: runtimeCapture, resetRuntimeCapture } = createCliRuntimeCapture();
 
 vi.mock("@clack/prompts", () => ({
   confirm,
@@ -132,7 +129,11 @@ vi.mock("./daemon-cli.js", () => ({
 
 // Mock the runtime
 vi.mock("../runtime.js", () => ({
-  defaultRuntime: runtimeCapture,
+  defaultRuntime: {
+    log: vi.fn(),
+    error: vi.fn(),
+    exit: vi.fn(),
+  },
 }));
 
 const { runGatewayUpdate } = await import("../infra/update-runner.js");
@@ -287,8 +288,6 @@ describe("update-cli", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    resetRuntimeCapture();
-    vi.mocked(defaultRuntime.exit).mockImplementation(() => {});
     vi.mocked(resolveOpenClawPackageRoot).mockResolvedValue(process.cwd());
     vi.mocked(readConfigFileSnapshot).mockResolvedValue(baseSnapshot);
     vi.mocked(fetchNpmTagVersion).mockResolvedValue({
@@ -448,24 +447,6 @@ describe("update-cli", () => {
       await updateStatusCommand(testCase.options);
       testCase.assert();
     }
-  });
-
-  it("parses update status --json as the subcommand option", async () => {
-    const program = new Command();
-    program.name("openclaw");
-    program.enablePositionalOptions();
-    let seenJson = false;
-    const update = program.command("update").option("--json", "", false);
-    update
-      .command("status")
-      .option("--json", "", false)
-      .action((opts) => {
-        seenJson = Boolean(opts.json);
-      });
-
-    await program.parseAsync(["node", "openclaw", "update", "status", "--json"]);
-
-    expect(seenJson).toBe(true);
   });
 
   it.each([

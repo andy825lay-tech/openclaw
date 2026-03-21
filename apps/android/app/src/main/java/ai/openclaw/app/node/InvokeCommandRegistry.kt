@@ -20,7 +20,6 @@ data class NodeRuntimeFlags(
   val locationEnabled: Boolean,
   val sendSmsAvailable: Boolean,
   val readSmsAvailable: Boolean,
-  val callLogAvailable: Boolean,
   val voiceWakeEnabled: Boolean,
   val motionActivityAvailable: Boolean,
   val motionPedometerAvailable: Boolean,
@@ -33,7 +32,6 @@ enum class InvokeCommandAvailability {
   LocationEnabled,
   SendSmsAvailable,
   ReadSmsAvailable,
-  CallLogAvailable,
   MotionActivityAvailable,
   MotionPedometerAvailable,
   DebugBuild,
@@ -44,7 +42,6 @@ enum class NodeCapabilityAvailability {
   CameraEnabled,
   LocationEnabled,
   SmsAvailable,
-  CallLogAvailable,
   VoiceWakeEnabled,
   MotionAvailable,
 }
@@ -90,10 +87,7 @@ object InvokeCommandRegistry {
         name = OpenClawCapability.Motion.rawValue,
         availability = NodeCapabilityAvailability.MotionAvailable,
       ),
-      NodeCapabilitySpec(
-        name = OpenClawCapability.CallLog.rawValue,
-        availability = NodeCapabilityAvailability.CallLogAvailable,
-      ),
+      NodeCapabilitySpec(name = OpenClawCapability.CallLog.rawValue),
     )
 
   val all: List<InvokeCommandSpec> =
@@ -203,7 +197,6 @@ object InvokeCommandRegistry {
       ),
       InvokeCommandSpec(
         name = OpenClawCallLogCommand.Search.rawValue,
-        availability = InvokeCommandAvailability.CallLogAvailable,
       ),
       InvokeCommandSpec(
         name = "debug.logs",
@@ -227,7 +220,6 @@ object InvokeCommandRegistry {
           NodeCapabilityAvailability.CameraEnabled -> flags.cameraEnabled
           NodeCapabilityAvailability.LocationEnabled -> flags.locationEnabled
           NodeCapabilityAvailability.SmsAvailable -> flags.sendSmsAvailable || flags.readSmsAvailable
-          NodeCapabilityAvailability.CallLogAvailable -> flags.callLogAvailable
           NodeCapabilityAvailability.VoiceWakeEnabled -> flags.voiceWakeEnabled
           NodeCapabilityAvailability.MotionAvailable -> flags.motionActivityAvailable || flags.motionPedometerAvailable
         }
@@ -244,7 +236,6 @@ object InvokeCommandRegistry {
           InvokeCommandAvailability.LocationEnabled -> flags.locationEnabled
           InvokeCommandAvailability.SendSmsAvailable -> flags.sendSmsAvailable
           InvokeCommandAvailability.ReadSmsAvailable -> flags.readSmsAvailable
-          InvokeCommandAvailability.CallLogAvailable -> flags.callLogAvailable
           InvokeCommandAvailability.MotionActivityAvailable -> flags.motionActivityAvailable
           InvokeCommandAvailability.MotionPedometerAvailable -> flags.motionPedometerAvailable
           InvokeCommandAvailability.DebugBuild -> flags.debugBuild

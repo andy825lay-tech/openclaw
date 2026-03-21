@@ -19,8 +19,6 @@ export type RegisterWebhookTargetOptions<T extends { path: string }> = {
 
 type RegisterPluginHttpRouteParams = Parameters<typeof registerPluginHttpRoute>[0];
 
-export { registerPluginHttpRoute };
-
 export type RegisterWebhookPluginRouteOptions = Omit<
   RegisterPluginHttpRouteParams,
   "path" | "fallbackPath"

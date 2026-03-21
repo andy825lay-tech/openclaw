@@ -5,6 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from "vit
 import { WebSocket } from "ws";
 import { DEFAULT_PROVIDER } from "../agents/defaults.js";
 import { GATEWAY_CLIENT_IDS, GATEWAY_CLIENT_MODES } from "./protocol/client-info.js";
+import { sessionsHandlers } from "./server-methods/sessions.js";
 import { startGatewayServerHarness, type GatewayServerHarness } from "./server.e2e-ws-harness.js";
 import { createToolSummaryPreviewTranscriptLines } from "./session-preview.test-helpers.js";
 import {
@@ -17,10 +18,7 @@ import {
   trackConnectChallengeNonce,
   writeSessionStore,
 } from "./test-helpers.js";
-
-async function getSessionsHandlers() {
-  return (await import("./server-methods/sessions.js")).sessionsHandlers;
-}
+import { getReplyFromConfig } from "./test-helpers.mocks.js";
 
 const sessionCleanupMocks = vi.hoisted(() => ({
   clearSessionQueues: vi.fn(() => ({ followupCleared: 0, laneCleared: 0, keys: [] })),
@@ -360,8 +358,9 @@ describe("gateway server sessions", () => {
   });
 
   test("sessions.create can start the first agent turn from an initial task", async () => {
-    await createSessionStoreDir();
     const { ws } = await openClient();
+    const replySpy = vi.mocked(getReplyFromConfig);
+    const callsBefore = replySpy.mock.calls.length;
 
     const created = await rpcReq<{
       key?: string;
@@ -383,6 +382,13 @@ describe("gateway server sessions", () => {
     expect(created.payload?.runStarted).toBe(true);
     expect(created.payload?.runId).toBeTruthy();
     expect(created.payload?.messageSeq).toBe(1);
+
+    await vi.waitFor(() => replySpy.mock.calls.length > callsBefore);
+    const ctx = replySpy.mock.calls.at(-1)?.[0] as
+      | { Body?: string; SessionKey?: string }
+      | undefined;
+    expect(ctx?.Body).toContain("hello from create");
+    expect(ctx?.SessionKey).toBe(created.payload?.key);
 
     ws.close();
   });
@@ -518,7 +524,6 @@ describe("gateway server sessions", () => {
 
     const broadcastToConnIds = vi.fn();
     const respond = vi.fn();
-    const sessionsHandlers = await getSessionsHandlers();
     await sessionsHandlers["sessions.patch"]({
       req: {} as never,
       params: {

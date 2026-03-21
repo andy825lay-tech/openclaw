@@ -1,14 +1,32 @@
 import { describe, expect, it, vi } from "vitest";
+import { buildChannelSetupWizardAdapterFromSetupWizard } from "../../../src/channels/plugins/setup-wizard.js";
 import {
-  createPluginSetupWizardConfigure,
+  listLineAccountIds,
+  resolveDefaultLineAccountId,
+  resolveLineAccount,
+} from "../../../src/line/accounts.js";
+import { createRuntimeEnv } from "../../../test/helpers/extensions/runtime-env.js";
+import {
   createTestWizardPrompter,
-  runSetupWizardConfigure,
   type WizardPrompter,
 } from "../../../test/helpers/extensions/setup-wizard.js";
 import type { OpenClawConfig } from "../api.js";
-import { linePlugin } from "./channel.js";
+import { lineSetupAdapter, lineSetupWizard } from "./setup-surface.js";
 
-const lineConfigure = createPluginSetupWizardConfigure(linePlugin);
+const lineConfigureAdapter = buildChannelSetupWizardAdapterFromSetupWizard({
+  plugin: {
+    id: "line",
+    meta: { label: "LINE" },
+    config: {
+      listAccountIds: listLineAccountIds,
+      defaultAccountId: resolveDefaultLineAccountId,
+      resolveAllowFrom: ({ cfg, accountId }: { cfg: OpenClawConfig; accountId?: string | null }) =>
+        resolveLineAccount({ cfg, accountId: accountId ?? undefined }).config.allowFrom,
+    },
+    setup: lineSetupAdapter,
+  } as Parameters<typeof buildChannelSetupWizardAdapterFromSetupWizard>[0]["plugin"],
+  wizard: lineSetupWizard,
+});
 
 describe("line setup wizard", () => {
   it("configures token and secret for the default account", async () => {
@@ -24,11 +42,14 @@ describe("line setup wizard", () => {
       }) as WizardPrompter["text"],
     });
 
-    const result = await runSetupWizardConfigure({
-      configure: lineConfigure,
+    const result = await lineConfigureAdapter.configure({
       cfg: {} as OpenClawConfig,
+      runtime: createRuntimeEnv(),
       prompter,
       options: {},
+      accountOverrides: {},
+      shouldPromptAccountIds: false,
+      forceAllowFrom: false,
     });
 
     expect(result.accountId).toBe("default");

@@ -1,0 +1,385 @@
+{
+  "name": "Discord Forum Bot - 新帖通知與自動回覆",
+  "nodes": [
+    {
+      "id": "webhook-trigger",
+      "name": "Discord Forum Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "position": [250, 300],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "discord-forum-bot",
+        "responseMode": "lastNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "parse-forum-post",
+      "name": "解析 Forum 帖子",
+      "type": "n8n-nodes-base.set",
+      "position": [450, 300],
+      "parameters": {
+        "mode": "raw",
+        "duplicateItem": false,
+        "assignments": {
+          "items": [
+            {
+              "id": "post-title",
+              "name": "title",
+              "value": "={{ $json.title || $json.content || '無標題' }}",
+              "type": "string"
+            },
+            {
+              "id": "post-author",
+              "name": "author",
+              "value": "={{ $json.author?.username || $json.username || $json.user?.username || '匿名用戶' }}",
+              "type": "string"
+            },
+            {
+              "id": "post-content",
+              "name": "content",
+              "value": "={{ $json.content || $json.message?.content || $json.body || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "post-url",
+              "name": "post_url",
+              "value": "={{ $json.url || $json.message?.url || $json.link || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "post-category",
+              "name": "category",
+              "value": "={{ $json.category || $json.channel?.name || $json.forum?.name || '一般' }}",
+              "type": "string"
+            },
+            {
+              "id": "guild-name",
+              "name": "guild_name",
+              "value": "={{ $json.guild?.name || $json.server_name || 'Discord Server' }}",
+              "type": "string"
+            },
+            {
+              "id": "channel-id",
+              "name": "channel_id",
+              "value": "={{ $json.channel_id || $json.channel?.id || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "message-id",
+              "name": "message_id",
+              "value": "={{ $json.message_id || $json.id || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "raw-data",
+              "name": "raw_json",
+              "value": "={{ JSON.stringify($json) }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "classify-intent",
+      "name": "意圖分類 (Ollama)",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [650, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:11434/api/generate",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "noAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "tls-phi4:latest"
+            },
+            {
+              "name": "prompt",
+              "value": "你是 TLS 星群科技的智能論壇助理。請分析以下論壇帖子的意圖和類型。\n\n帖子標題：{{ $json.title }}\n帖子內容：{{ $json.content }}\n板塊分類：{{ $json.category }}\n\n請以 JSON 格式回覆：\n{\n  \"intent\": \"提問/分享/求助/抱怨/公告/其他\",\n  \"category\": \"建議的分類標籤\",\n  \"urgency\": \"high/medium/low\",\n  \"summary\": \"一句話摘要\",\n  \"auto_reply_needed\": true/false,\n  \"reply_tone\": \"正式/友善/專業/安慰\"\n}"
+            },
+            {
+              "name": "stream",
+              "value": false
+            },
+            {
+              "name": "options",
+              "value": {
+                "temperature": 0.3,
+                "num_predict": 200
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "parse-intent-result",
+      "name": "解析意圖結果",
+      "type": "n8n-nodes-base.set",
+      "position": [850, 300],
+      "parameters": {
+        "mode": "raw",
+        "duplicateItem": false,
+        "assignments": {
+          "items": [
+            {
+              "id": "intent-json",
+              "name": "intent_data",
+              "value": "={{ $json.response ? JSON.parse($json.response) : $json }}",
+              "type": "string"
+            },
+            {
+              "id": "intent-type",
+              "name": "intent",
+              "value": "={{ $json.intent || 'other' }}",
+              "type": "string"
+            },
+            {
+              "id": "urgency",
+              "name": "urgency",
+              "value": "={{ $json.urgency || 'low' }}",
+              "type": "string"
+            },
+            {
+              "id": "auto-reply",
+              "name": "auto_reply_needed",
+              "value": "={{ $json.auto_reply_needed || false }}",
+              "type": "boolean"
+            },
+            {
+              "id": "reply-tone",
+              "name": "reply_tone",
+              "value": "={{ $json.reply_tone || 'friendly' }}",
+              "type": "string"
+            },
+            {
+              "id": "summary",
+              "name": "summary",
+              "value": "={{ $json.summary || '' }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "generate-auto-reply",
+      "name": "生成自動回覆 (Ollama)",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1050, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:11434/api/generate",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "noAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "tls-gemma3:latest"
+            },
+            {
+              "name": "prompt",
+              "value": "你是 TLS 星群科技的專業客服助理。\n\n論壇帖子資訊：\n- 標題：{{ $('解析 Forum 帖子').item.json.title }}\n- 作者：{{ $('解析 Forum 帖子').item.json.author }}\n- 內容：{{ $('解析 Forum 帖子').item.json.content }}\n- 板塊：{{ $('解析 Forum 帖子').item.json.category }}\n\n分析結果：\n-意圖：{{ $('解析意圖結果').item.json.intent }}\n- 緊急程度：{{ $('解析意圖結果').item.json.urgency }}\n- 回覆語氣：{{ $('解析意圖結果').item.json.reply_tone }}\n\n請生成一段專業、友善的論壇回覆。回覆要：\n1. 符合 TLS 星群品牌調性（專業、創新、值得信賴）\n2. 直接回應用戶需求\n3. 若無法解決問題，提供下一步建議\n4. 字數控制在 100-200 字\n\n只輸出回覆內容，不要其他說明。"
+            },
+            {
+              "name": "stream",
+              "value": false
+            },
+            {
+              "name": "options",
+              "value": {
+                "temperature": 0.7,
+                "num_predict": 300
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "notify-admin",
+      "name": "通知管理員 (Discord)",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1250, 200],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DISCORD_ADMIN_WEBHOOK_URL || 'YOUR_DISCORD_ADMIN_WEBHOOK_URL' }}",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "content",
+              "value": "📢 **新 Forum 帖子通知**\n\n**標題：** {{ $('解析 Forum 帖子').item.json.title }}\n**作者：** {{ $('解析 Forum 帖子').item.json.author }}\n**板塊：** {{ $('解析 Forum 帖子').item.json.category }}\n**頻道：** {{ $('解析 Forum 帖子').item.json.guild_name }}\n\n**意圖分析：**\n- 類型：{{ $('解析意圖結果').item.json.intent }}\n- 緊急度：{{ $('解析意圖結果').item.json.urgency }}\n- 摘要：{{ $('解析意圖結果').item.json.summary }}\n\n**連結：** {{ $('解析 Forum 帖子').item.json.post_url }}\n\n{{ $('解析意圖結果').item.json.urgency === 'high' ? '⚠️ **高優先級帖子，需要盡快處理**' : '' }}"
+            }
+          ]
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "log-to-db",
+      "name": "記錄到資料庫",
+      "type": "n8n-nodes-base.set",
+      "position": [1250, 400],
+      "parameters": {
+        "mode": "raw",
+        "duplicateItem": false,
+        "assignments": {
+          "items": [
+            {
+              "id": "log-timestamp",
+              "name": "timestamp",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "log-title",
+              "name": "title",
+              "value": "={{ $('解析 Forum 帖子').item.json.title }}",
+              "type": "string"
+            },
+            {
+              "id": "log-author",
+              "name": "author",
+              "value": "={{ $('解析 Forum 帖子').item.json.author }}",
+              "type": "string"
+            },
+            {
+              "id": "log-category",
+              "name": "category",
+              "value": "={{ $('解析 Forum 帖子').item.json.category }}",
+              "type": "string"
+            },
+            {
+              "id": "log-intent",
+              "name": "intent",
+              "value": "={{ $('解析意圖結果').item.json.intent }}",
+              "type": "string"
+            },
+            {
+              "id": "log-urgency",
+              "name": "urgency",
+              "value": "={{ $('解析意圖結果').item.json.urgency }}",
+              "type": "string"
+            },
+            {
+              "id": "log-auto-reply",
+              "name": "auto_reply_generated",
+              "value": "={{ !!$('生成自動回覆 (Ollama)').item.json.response }}",
+              "type": "boolean"
+            },
+            {
+              "id": "log-raw",
+              "name": "raw_data",
+              "value": "={{ $('解析 Forum 帖子').item.json.raw_json }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "response-success",
+      "name": "回傳成功響應",
+      "type": "n8n-nodes-base.set",
+      "position": [1450, 300],
+      "parameters": {
+        "mode": "raw",
+        "duplicateItem": false,
+        "assignments": {
+          "items": [
+            {
+              "id": "status",
+              "name": "status",
+              "value": "success",
+              "type": "string"
+            },
+            {
+              "id": "processed-at",
+              "name": "processed_at",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "intent-result",
+              "name": "intent_result",
+              "value": "={{ $('解析意圖結果').item.json }}",
+              "type": "string"
+            },
+            {
+              "id": "auto-reply-text",
+              "name": "auto_reply",
+              "value": "={{ $('生成自動回覆 (Ollama)').item.json.response || '' }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Discord Forum Webhook Trigger": {
+      "main": [[{ "node": "解析 Forum 帖子", "type": "main", "index": 0 }]]
+    },
+    "解析 Forum 帖子": {
+      "main": [[{ "node": "意圖分類 (Ollama)", "type": "main", "index": 0 }]]
+    },
+    "意圖分類 (Ollama)": {
+      "main": [[{ "node": "解析意圖結果", "type": "main", "index": 0 }]]
+    },
+    "解析意圖結果": {
+      "main": [
+        [{ "node": "生成自動回覆 (Ollama)", "type": "main", "index": 0 }],
+        [{ "node": "通知管理員 (Discord)", "type": "main", "index": 0 }],
+        [{ "node": "記錄到資料庫", "type": "main", "index": 0 }]
+      ]
+    },
+    "生成自動回覆 (Ollama)": {
+      "main": [[{ "node": "回傳成功響應", "type": "main", "index": 0 }]]
+    },
+    "通知管理員 (Discord)": {
+      "main": [[]]
+    },
+    "記錄到資料庫": {
+      "main": [[]]
+    },
+    "回傳成功響應": {
+      "main": [[]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "timezone": "Asia/Taipei"
+  },
+  "staticData": null
+}

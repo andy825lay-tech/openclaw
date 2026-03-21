@@ -1,10 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  expectLifecyclePatch,
   expectPendingUntilAbort,
   startAccountAndTrackLifecycle,
-  waitForStartedMocks,
 } from "../../../test/helpers/extensions/start-account-lifecycle.js";
+import type { ChannelAccountSnapshot } from "../runtime-api.js";
 import type { ResolvedZaloAccount } from "./accounts.js";
 
 const hoisted = vi.hoisted(() => ({
@@ -67,13 +66,21 @@ describe("zaloPlugin gateway.startAccount", () => {
     });
 
     await expectPendingUntilAbort({
-      waitForStarted: waitForStartedMocks(hoisted.probeZalo, hoisted.monitorZaloProvider),
+      waitForStarted: () =>
+        vi.waitFor(() => {
+          expect(hoisted.probeZalo).toHaveBeenCalledOnce();
+          expect(hoisted.monitorZaloProvider).toHaveBeenCalledOnce();
+        }),
       isSettled,
       abort,
       task,
     });
 
-    expectLifecyclePatch(patches, { accountId: "default" });
+    expect(patches).toContainEqual(
+      expect.objectContaining({
+        accountId: "default",
+      }),
+    );
     expect(isSettled()).toBe(true);
     expect(hoisted.monitorZaloProvider).toHaveBeenCalledWith(
       expect.objectContaining({

@@ -4,7 +4,6 @@ import {
   DEFAULT_SEARCH_COUNT,
   MAX_SEARCH_COUNT,
   formatCliCommand,
-  mergeScopedSearchConfig,
   normalizeFreshness,
   normalizeToIsoDate,
   readCachedSearchPayload,
@@ -592,7 +591,6 @@ export function createBraveWebSearchProvider(): WebSearchProviderPlugin {
     id: "brave",
     label: "Brave Search",
     hint: "Structured results · country/language/time filters",
-    credentialLabel: "Brave Search API key",
     envVars: ["BRAVE_API_KEY"],
     placeholder: "BSA...",
     signupUrl: "https://brave.com/search/api/",
@@ -609,12 +607,21 @@ export function createBraveWebSearchProvider(): WebSearchProviderPlugin {
     },
     createTool: (ctx) =>
       createBraveToolDefinition(
-        mergeScopedSearchConfig(
-          ctx.searchConfig as SearchConfigRecord | undefined,
-          "brave",
-          resolveProviderWebSearchPluginConfig(ctx.config, "brave"),
-          { mirrorApiKeyToTopLevel: true },
-        ) as SearchConfigRecord | undefined,
+        (() => {
+          const searchConfig = ctx.searchConfig as SearchConfigRecord | undefined;
+          const pluginConfig = resolveProviderWebSearchPluginConfig(ctx.config, "brave");
+          if (!pluginConfig) {
+            return searchConfig;
+          }
+          return {
+            ...(searchConfig ?? {}),
+            ...(pluginConfig.apiKey === undefined ? {} : { apiKey: pluginConfig.apiKey }),
+            brave: {
+              ...resolveBraveConfig(searchConfig),
+              ...pluginConfig,
+            },
+          } as SearchConfigRecord;
+        })(),
       ),
   };
 }

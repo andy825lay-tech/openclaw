@@ -60,13 +60,6 @@ function renderRecentsViewRows(
   return extractContainerRows(payload.components);
 }
 
-function requireValue<T>(value: T | null | undefined, message: string): T {
-  if (value == null) {
-    throw new Error(message);
-  }
-  return value;
-}
-
 describe("loadDiscordModelPickerData", () => {
   it("reuses buildModelsProviderData as source of truth with agent scope", async () => {
     const expected = createModelsProviderData({ openai: ["gpt-4o"] });
@@ -300,23 +293,19 @@ describe("model paging", () => {
     );
     const data = createModelsProviderData({ openai: models });
 
-    const page1 = requireValue(
-      getDiscordModelPickerModelPage({ data, provider: "openai", page: 1 }),
-      "expected first model page for openai",
-    );
-    const page2 = requireValue(
-      getDiscordModelPickerModelPage({ data, provider: "openai", page: 2 }),
-      "expected second model page for openai",
-    );
+    const page1 = getDiscordModelPickerModelPage({ data, provider: "openai", page: 1 });
+    const page2 = getDiscordModelPickerModelPage({ data, provider: "openai", page: 2 });
 
-    expect(page1.items).toHaveLength(DISCORD_MODEL_PICKER_MODEL_PAGE_SIZE);
-    expect(page1.items[0]).toBe("model-01");
-    expect(page1.hasNext).toBe(true);
+    expect(page1).not.toBeNull();
+    expect(page2).not.toBeNull();
+    expect(page1?.items).toHaveLength(DISCORD_MODEL_PICKER_MODEL_PAGE_SIZE);
+    expect(page1?.items[0]).toBe("model-01");
+    expect(page1?.hasNext).toBe(true);
 
-    expect(page2.items).toHaveLength(4);
-    expect(page2.page).toBe(2);
-    expect(page2.hasPrev).toBe(true);
-    expect(page2.hasNext).toBe(false);
+    expect(page2?.items).toHaveLength(4);
+    expect(page2?.page).toBe(2);
+    expect(page2?.hasPrev).toBe(true);
+    expect(page2?.hasNext).toBe(false);
   });
 
   it("returns null for unknown provider", () => {
@@ -327,11 +316,8 @@ describe("model paging", () => {
 
   it("caps custom model page size at Discord select-option max", () => {
     const data = createModelsProviderData({ openai: ["gpt-4o", "gpt-4.1"] });
-    const page = requireValue(
-      getDiscordModelPickerModelPage({ data, provider: "openai", pageSize: 999 }),
-      "expected model page when provider exists",
-    );
-    expect(page.pageSize).toBe(DISCORD_MODEL_PICKER_MODEL_PAGE_SIZE);
+    const page = getDiscordModelPickerModelPage({ data, provider: "openai", pageSize: 999 });
+    expect(page?.pageSize).toBe(DISCORD_MODEL_PICKER_MODEL_PAGE_SIZE);
   });
 });
 
@@ -358,11 +344,7 @@ describe("Discord model picker rendering", () => {
     };
 
     expect(payload.content).toBeUndefined();
-    const firstComponent = requireValue(
-      payload.components?.[0],
-      "provider view should render a container component",
-    );
-    expect(firstComponent.type).toBe(ComponentType.Container);
+    expect(payload.components?.[0]?.type).toBe(ComponentType.Container);
 
     const rows = extractContainerRows(payload.components);
     expect(rows.length).toBeGreaterThan(0);
@@ -430,11 +412,7 @@ describe("Discord model picker rendering", () => {
     };
 
     expect(payload.content).toContain("Model Picker");
-    const firstComponent = requireValue(
-      payload.components?.[0],
-      "classic provider view should render an action row",
-    );
-    expect(firstComponent.type).toBe(ComponentType.ActionRow);
+    expect(payload.components?.[0]?.type).toBe(ComponentType.ActionRow);
   });
 
   it("preserves the stored model suffix spacing in Discord current-model text", () => {
@@ -483,24 +461,22 @@ describe("Discord model picker rendering", () => {
     const providerSelect = rows[0]?.components?.find(
       (component) => component.type === Number(ComponentType.StringSelect),
     );
-    if (!providerSelect) {
-      throw new Error("models view did not render a provider select");
-    }
-    expect(providerSelect.options?.length).toBe(2);
-    expect(providerSelect.options?.find((option) => option.value === "openai")?.default).toBe(true);
-    const parsedProviderState = parseDiscordModelPickerCustomId(providerSelect.custom_id ?? "");
+    expect(providerSelect).toBeTruthy();
+    expect(providerSelect?.options?.length).toBe(2);
+    expect(providerSelect?.options?.find((option) => option.value === "openai")?.default).toBe(
+      true,
+    );
+    const parsedProviderState = parseDiscordModelPickerCustomId(providerSelect?.custom_id ?? "");
     expect(parsedProviderState?.action).toBe("provider");
 
     const modelSelect = rows[1]?.components?.find(
       (component) => component.type === Number(ComponentType.StringSelect),
     );
-    if (!modelSelect) {
-      throw new Error("models view did not render a model select");
-    }
-    expect(modelSelect.options?.length).toBe(3);
-    expect(modelSelect.options?.find((option) => option.value === "o3")?.default).toBe(true);
+    expect(modelSelect).toBeTruthy();
+    expect(modelSelect?.options?.length).toBe(3);
+    expect(modelSelect?.options?.find((option) => option.value === "o3")?.default).toBe(true);
 
-    const parsedModelSelectState = parseDiscordModelPickerCustomId(modelSelect.custom_id ?? "");
+    const parsedModelSelectState = parseDiscordModelPickerCustomId(modelSelect?.custom_id ?? "");
     expect(parsedModelSelectState?.action).toBe("model");
     expect(parsedModelSelectState?.provider).toBe("openai");
 
@@ -538,19 +514,13 @@ describe("Discord model picker rendering", () => {
     const rows = extractContainerRows(payload.components);
     expect(rows).toHaveLength(1);
 
-    const backButton = requireValue(
-      rows[0]?.components?.[0],
-      "models view should render a back button row",
-    );
-    expect(backButton.type).toBe(ComponentType.Button);
+    const backButton = rows[0]?.components?.[0];
+    expect(backButton?.type).toBe(ComponentType.Button);
 
-    const state = requireValue(
-      parseDiscordModelPickerCustomId(backButton.custom_id ?? ""),
-      "back button custom id should parse",
-    );
-    expect(state.action).toBe("back");
-    expect(state.view).toBe("providers");
-    expect(state.page).toBe(3);
+    const state = parseDiscordModelPickerCustomId(backButton?.custom_id ?? "");
+    expect(state?.action).toBe("back");
+    expect(state?.view).toBe("providers");
+    expect(state?.page).toBe(3);
   });
 
   it("shows Recents button when quickModels are provided", () => {
@@ -573,12 +543,9 @@ describe("Discord model picker rendering", () => {
     const buttons = buttonRow?.components ?? [];
     expect(buttons).toHaveLength(4);
 
-    const favoritesState = requireValue(
-      parseDiscordModelPickerCustomId(buttons[2]?.custom_id ?? ""),
-      "recents button custom id should parse",
-    );
-    expect(favoritesState.action).toBe("recents");
-    expect(favoritesState.view).toBe("recents");
+    const favoritesState = parseDiscordModelPickerCustomId(buttons[2]?.custom_id ?? "");
+    expect(favoritesState?.action).toBe("recents");
+    expect(favoritesState?.view).toBe("recents");
   });
 
   it("omits Recents button when no quickModels", () => {
@@ -625,52 +592,28 @@ describe("Discord model picker recents view", () => {
     expect(rows).toHaveLength(4);
 
     // First row: default model button (slot 1).
-    const defaultBtn = requireValue(
-      rows[0]?.components?.[0],
-      "recents view should render a default model button",
-    );
-    expect(defaultBtn.type).toBe(ComponentType.Button);
-    const defaultState = requireValue(
-      parseDiscordModelPickerCustomId(defaultBtn.custom_id ?? ""),
-      "default recents button custom id should parse",
-    );
-    expect(defaultState.action).toBe("submit");
-    expect(defaultState.view).toBe("recents");
-    expect(defaultState.recentSlot).toBe(1);
+    const defaultBtn = rows[0]?.components?.[0];
+    expect(defaultBtn?.type).toBe(ComponentType.Button);
+    const defaultState = parseDiscordModelPickerCustomId(defaultBtn?.custom_id ?? "");
+    expect(defaultState?.action).toBe("submit");
+    expect(defaultState?.view).toBe("recents");
+    expect(defaultState?.recentSlot).toBe(1);
 
     // Second row: first recent (slot 2).
-    const recentBtn1 = requireValue(
-      rows[1]?.components?.[0],
-      "recents view should render first recent button",
-    );
-    const recentState1 = requireValue(
-      parseDiscordModelPickerCustomId(recentBtn1.custom_id ?? ""),
-      "first recent custom id should parse",
-    );
-    expect(recentState1.recentSlot).toBe(2);
+    const recentBtn1 = rows[1]?.components?.[0];
+    const recentState1 = parseDiscordModelPickerCustomId(recentBtn1?.custom_id ?? "");
+    expect(recentState1?.recentSlot).toBe(2);
 
     // Third row: second recent (slot 3).
-    const recentBtn2 = requireValue(
-      rows[2]?.components?.[0],
-      "recents view should render second recent button",
-    );
-    const recentState2 = requireValue(
-      parseDiscordModelPickerCustomId(recentBtn2.custom_id ?? ""),
-      "second recent custom id should parse",
-    );
-    expect(recentState2.recentSlot).toBe(3);
+    const recentBtn2 = rows[2]?.components?.[0];
+    const recentState2 = parseDiscordModelPickerCustomId(recentBtn2?.custom_id ?? "");
+    expect(recentState2?.recentSlot).toBe(3);
 
     // Fourth row (after divider): Back button.
-    const backBtn = requireValue(
-      rows[3]?.components?.[0],
-      "recents view should render a back button",
-    );
-    const backState = requireValue(
-      parseDiscordModelPickerCustomId(backBtn.custom_id ?? ""),
-      "recents back button custom id should parse",
-    );
-    expect(backState.action).toBe("back");
-    expect(backState.view).toBe("models");
+    const backBtn = rows[3]?.components?.[0];
+    const backState = parseDiscordModelPickerCustomId(backBtn?.custom_id ?? "");
+    expect(backState?.action).toBe("back");
+    expect(backState?.view).toBe("models");
   });
 
   it("includes (default) suffix on default model button label", () => {
@@ -685,11 +628,8 @@ describe("Discord model picker recents view", () => {
       quickModels: ["openai/gpt-4o"],
       currentModel: "openai/gpt-4o",
     });
-    const defaultBtn = requireValue(
-      rows[0]?.components?.[0] as { label?: string } | undefined,
-      "recents default row should include a button",
-    );
-    expect(defaultBtn.label).toContain("(default)");
+    const defaultBtn = rows[0]?.components?.[0] as { label?: string };
+    expect(defaultBtn?.label).toContain("(default)");
   });
 
   it("deduplicates recents that match the default model", () => {
@@ -708,17 +648,11 @@ describe("Discord model picker recents view", () => {
     // 1 default + 1 deduped recent + 1 back = 3 rows (openai/gpt-4o not shown twice)
     expect(rows).toHaveLength(3);
 
-    const defaultBtn = requireValue(
-      rows[0]?.components?.[0] as { label?: string } | undefined,
-      "deduped recents should keep the default button",
-    );
-    expect(defaultBtn.label).toContain("openai/gpt-4o");
-    expect(defaultBtn.label).toContain("(default)");
+    const defaultBtn = rows[0]?.components?.[0] as { label?: string };
+    expect(defaultBtn?.label).toContain("openai/gpt-4o");
+    expect(defaultBtn?.label).toContain("(default)");
 
-    const recentBtn = requireValue(
-      rows[1]?.components?.[0] as { label?: string } | undefined,
-      "deduped recents should keep the non-default recent button",
-    );
-    expect(recentBtn.label).toContain("anthropic/claude-sonnet-4-5");
+    const recentBtn = rows[1]?.components?.[0] as { label?: string };
+    expect(recentBtn?.label).toContain("anthropic/claude-sonnet-4-5");
   });
 });

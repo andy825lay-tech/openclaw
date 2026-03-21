@@ -40,19 +40,8 @@ export async function enforceTelegramDmAccess(params: {
   accountId: string;
   bot: Bot;
   logger: TelegramDmAccessLogger;
-  upsertPairingRequest?: typeof upsertChannelPairingRequest;
 }): Promise<boolean> {
-  const {
-    isGroup,
-    dmPolicy,
-    msg,
-    chatId,
-    effectiveDmAllow,
-    accountId,
-    bot,
-    logger,
-    upsertPairingRequest,
-  } = params;
+  const { isGroup, dmPolicy, msg, chatId, effectiveDmAllow, accountId, bot, logger } = params;
   if (isGroup) {
     return true;
   }
@@ -84,7 +73,7 @@ export async function enforceTelegramDmAccess(params: {
       await createChannelPairingChallengeIssuer({
         channel: "telegram",
         upsertPairingRequest: async ({ id, meta }) =>
-          await (upsertPairingRequest ?? upsertChannelPairingRequest)({
+          await upsertChannelPairingRequest({
             channel: "telegram",
             id,
             accountId,

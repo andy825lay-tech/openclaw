@@ -1,14 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
+import { buildChannelSetupWizardAdapterFromSetupWizard } from "../../../src/channels/plugins/setup-wizard.js";
+import { createRuntimeEnv } from "../../../test/helpers/extensions/runtime-env.js";
 import {
-  createPluginSetupWizardConfigure,
   createTestWizardPrompter,
-  runSetupWizardConfigure,
   type WizardPrompter,
 } from "../../../test/helpers/extensions/setup-wizard.js";
-import type { OpenClawConfig } from "../api.js";
+import type { OpenClawConfig, RuntimeEnv } from "../api.js";
 import { tlonPlugin } from "./channel.js";
 
-const tlonConfigure = createPluginSetupWizardConfigure(tlonPlugin);
+const tlonConfigureAdapter = buildChannelSetupWizardAdapterFromSetupWizard({
+  plugin: tlonPlugin,
+  wizard: tlonPlugin.setupWizard!,
+});
 
 describe("tlon setup wizard", () => {
   it("configures ship, auth, and discovery settings", async () => {
@@ -45,11 +48,16 @@ describe("tlon setup wizard", () => {
       }),
     });
 
-    const result = await runSetupWizardConfigure({
-      configure: tlonConfigure,
+    const runtime: RuntimeEnv = createRuntimeEnv();
+
+    const result = await tlonConfigureAdapter.configure({
       cfg: {} as OpenClawConfig,
+      runtime,
       prompter,
       options: {},
+      accountOverrides: {},
+      shouldPromptAccountIds: false,
+      forceAllowFrom: false,
     });
 
     expect(result.accountId).toBe("default");

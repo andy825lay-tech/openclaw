@@ -1,10 +1,10 @@
+import { collectTelegramUnmentionedGroupIds } from "openclaw/plugin-sdk/telegram";
+import { telegramMessageActions } from "openclaw/plugin-sdk/telegram";
 import {
-  collectTelegramUnmentionedGroupIds,
-  resolveTelegramToken,
   setTelegramThreadBindingIdleTimeoutBySessionKey,
   setTelegramThreadBindingMaxAgeBySessionKey,
-  telegramMessageActions,
-} from "../../plugin-sdk/telegram.js";
+} from "openclaw/plugin-sdk/telegram";
+import { resolveTelegramToken } from "openclaw/plugin-sdk/telegram";
 import {
   createLazyRuntimeMethodBinder,
   createLazyRuntimeSurface,

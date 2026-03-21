@@ -1,5 +1,4 @@
-import { createDedupeCache, resolveGlobalDedupeCache } from "../infra/dedupe.js";
-import { resolveGlobalSingleton } from "../shared/global-singleton.js";
+import { createDedupeCache } from "../infra/dedupe.js";
 import {
   dispatchDiscordInteractiveHandler,
   dispatchSlackInteractiveHandler,
@@ -34,23 +33,11 @@ type InteractiveDispatchResult =
   | { matched: false; handled: false; duplicate: false }
   | { matched: true; handled: boolean; duplicate: boolean };
 
-type InteractiveState = {
-  interactiveHandlers: Map<string, RegisteredInteractiveHandler>;
-  callbackDedupe: ReturnType<typeof createDedupeCache>;
-};
-
-const PLUGIN_INTERACTIVE_STATE_KEY = Symbol.for("openclaw.pluginInteractiveState");
-
-const state = resolveGlobalSingleton<InteractiveState>(PLUGIN_INTERACTIVE_STATE_KEY, () => ({
-  interactiveHandlers: new Map<string, RegisteredInteractiveHandler>(),
-  callbackDedupe: resolveGlobalDedupeCache(Symbol.for("openclaw.pluginInteractiveCallbackDedupe"), {
-    ttlMs: 5 * 60_000,
-    maxSize: 4096,
-  }),
-}));
-
-const interactiveHandlers = state.interactiveHandlers;
-const callbackDedupe = state.callbackDedupe;
+const interactiveHandlers = new Map<string, RegisteredInteractiveHandler>();
+const callbackDedupe = createDedupeCache({
+  ttlMs: 5 * 60_000,
+  maxSize: 4096,
+});
 
 function toRegistryKey(channel: string, namespace: string): string {
   return `${channel.trim().toLowerCase()}:${namespace.trim()}`;
@@ -168,7 +155,6 @@ export async function dispatchPluginInteractiveHandler(params: {
     clearButtons: () => Promise<void>;
     deleteMessage: () => Promise<void>;
   };
-  onMatched?: () => Promise<void> | void;
 }): Promise<InteractiveDispatchResult>;
 export async function dispatchPluginInteractiveHandler(params: {
   channel: "discord";
@@ -176,7 +162,6 @@ export async function dispatchPluginInteractiveHandler(params: {
   interactionId: string;
   ctx: DiscordInteractiveDispatchContext;
   respond: PluginInteractiveDiscordHandlerContext["respond"];
-  onMatched?: () => Promise<void> | void;
 }): Promise<InteractiveDispatchResult>;
 export async function dispatchPluginInteractiveHandler(params: {
   channel: "slack";
@@ -184,7 +169,6 @@ export async function dispatchPluginInteractiveHandler(params: {
   interactionId: string;
   ctx: SlackInteractiveDispatchContext;
   respond: PluginInteractiveSlackHandlerContext["respond"];
-  onMatched?: () => Promise<void> | void;
 }): Promise<InteractiveDispatchResult>;
 export async function dispatchPluginInteractiveHandler(params: {
   channel: "telegram" | "discord" | "slack";
@@ -208,7 +192,6 @@ export async function dispatchPluginInteractiveHandler(params: {
       }
     | PluginInteractiveDiscordHandlerContext["respond"]
     | PluginInteractiveSlackHandlerContext["respond"];
-  onMatched?: () => Promise<void> | void;
 }): Promise<InteractiveDispatchResult> {
   const match = resolveNamespaceMatch(params.channel, params.data);
   if (!match) {
@@ -220,8 +203,6 @@ export async function dispatchPluginInteractiveHandler(params: {
   if (dedupeKey && callbackDedupe.peek(dedupeKey)) {
     return { matched: true, handled: true, duplicate: true };
   }
-
-  await params.onMatched?.();
 
   let result:
     | ReturnType<PluginInteractiveTelegramHandlerRegistration["handler"]>

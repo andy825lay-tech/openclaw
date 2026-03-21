@@ -1,9 +1,8 @@
-import { describeAccountSnapshot } from "openclaw/plugin-sdk/account-helpers";
 import {
-  adaptScopedAccountAccessor,
   createScopedChannelConfigAdapter,
+  createScopedDmSecurityResolver,
 } from "openclaw/plugin-sdk/channel-config-helpers";
-import { createRestrictSendersChannelSecurity } from "openclaw/plugin-sdk/channel-policy";
+import { createAllowlistProviderRestrictSendersWarningCollector } from "openclaw/plugin-sdk/channel-policy";
 import { createChannelPluginBase } from "openclaw/plugin-sdk/core";
 import {
   listSignalAccountIds,
@@ -33,7 +32,7 @@ export const signalSetupWizard = createSignalSetupWizardProxy(
 export const signalConfigAdapter = createScopedChannelConfigAdapter<ResolvedSignalAccount>({
   sectionKey: SIGNAL_CHANNEL,
   listAccountIds: listSignalAccountIds,
-  resolveAccount: adaptScopedAccountAccessor(resolveSignalAccount),
+  resolveAccount: (cfg, accountId) => resolveSignalAccount({ cfg, accountId }),
   defaultAccountId: resolveDefaultSignalAccountId,
   clearBaseFields: ["account", "httpUrl", "httpHost", "httpPort", "cliPath", "name"],
   resolveAllowFrom: (account: ResolvedSignalAccount) => account.config.allowFrom,
@@ -46,19 +45,24 @@ export const signalConfigAdapter = createScopedChannelConfigAdapter<ResolvedSign
   resolveDefaultTo: (account: ResolvedSignalAccount) => account.config.defaultTo,
 });
 
-export const signalSecurityAdapter = createRestrictSendersChannelSecurity<ResolvedSignalAccount>({
+export const signalResolveDmPolicy = createScopedDmSecurityResolver<ResolvedSignalAccount>({
   channelKey: SIGNAL_CHANNEL,
-  resolveDmPolicy: (account) => account.config.dmPolicy,
-  resolveDmAllowFrom: (account) => account.config.allowFrom,
-  resolveGroupPolicy: (account) => account.config.groupPolicy,
-  surface: "Signal groups",
-  openScope: "any member",
-  groupPolicyPath: "channels.signal.groupPolicy",
-  groupAllowFromPath: "channels.signal.groupAllowFrom",
-  mentionGated: false,
+  resolvePolicy: (account) => account.config.dmPolicy,
+  resolveAllowFrom: (account) => account.config.allowFrom,
   policyPathSuffix: "dmPolicy",
-  normalizeDmEntry: (raw) => normalizeE164(raw.replace(/^signal:/i, "").trim()),
+  normalizeEntry: (raw) => normalizeE164(raw.replace(/^signal:/i, "").trim()),
 });
+
+export const collectSignalSecurityWarnings =
+  createAllowlistProviderRestrictSendersWarningCollector<ResolvedSignalAccount>({
+    providerConfigPresent: (cfg) => cfg.channels?.signal !== undefined,
+    resolveGroupPolicy: (account) => account.config.groupPolicy,
+    surface: "Signal groups",
+    openScope: "any member",
+    groupPolicyPath: "channels.signal.groupPolicy",
+    groupAllowFromPath: "channels.signal.groupAllowFrom",
+    mentionGated: false,
+  });
 
 export function createSignalPluginBase(params: {
   setupWizard?: NonNullable<ChannelPlugin<ResolvedSignalAccount>["setupWizard"]>;
@@ -95,16 +99,18 @@ export function createSignalPluginBase(params: {
     config: {
       ...signalConfigAdapter,
       isConfigured: (account) => account.configured,
-      describeAccount: (account) =>
-        describeAccountSnapshot({
-          account,
-          configured: account.configured,
-          extra: {
-            baseUrl: account.baseUrl,
-          },
-        }),
+      describeAccount: (account) => ({
+        accountId: account.accountId,
+        name: account.name,
+        enabled: account.enabled,
+        configured: account.configured,
+        baseUrl: account.baseUrl,
+      }),
     },
-    security: signalSecurityAdapter,
+    security: {
+      resolveDmPolicy: signalResolveDmPolicy,
+      collectWarnings: collectSignalSecurityWarnings,
+    },
     setup: params.setup,
   }) as Pick<
     ChannelPlugin<ResolvedSignalAccount>,

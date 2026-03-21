@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { resolveRetryConfig, retryAsync } from "./retry.js";
 
 async function runRetryAfterCase(params: {
@@ -6,7 +6,6 @@ async function runRetryAfterCase(params: {
   maxDelayMs: number;
   retryAfterMs: number;
 }): Promise<number[]> {
-  vi.clearAllTimers();
   vi.useFakeTimers();
   try {
     const fn = vi.fn().mockRejectedValueOnce(new Error("boom")).mockResolvedValueOnce("ok");
@@ -23,15 +22,9 @@ async function runRetryAfterCase(params: {
     await expect(promise).resolves.toBe("ok");
     return delays;
   } finally {
-    vi.clearAllTimers();
     vi.useRealTimers();
   }
 }
-
-afterEach(() => {
-  vi.clearAllTimers();
-  vi.useRealTimers();
-});
 
 describe("retryAsync", () => {
   it("returns on first success", async () => {

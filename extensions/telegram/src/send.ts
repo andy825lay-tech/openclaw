@@ -25,7 +25,7 @@ import { withTelegramApiErrorLogging } from "./api-logging.js";
 import { buildTelegramThreadParams, buildTypingThreadParams } from "./bot/helpers.js";
 import type { TelegramInlineButtons } from "./button-types.js";
 import { splitTelegramCaption } from "./caption.js";
-import { resolveTelegramApiBase, resolveTelegramFetch } from "./fetch.js";
+import { resolveTelegramFetch } from "./fetch.js";
 import { renderTelegramHtmlText, splitTelegramHtmlChunks } from "./format.js";
 import {
   isRecoverableTelegramNetworkError,
@@ -192,10 +192,9 @@ function buildTelegramClientOptionsCacheKey(params: {
   const autoSelectFamilyKey =
     typeof autoSelectFamily === "boolean" ? String(autoSelectFamily) : "default";
   const dnsResultOrderKey = params.account.config.network?.dnsResultOrder ?? "default";
-  const apiRootKey = params.account.config.apiRoot?.trim() ?? "";
   const timeoutSecondsKey =
     typeof params.timeoutSeconds === "number" ? String(params.timeoutSeconds) : "default";
-  return `${params.account.accountId}::${proxyKey}::${autoSelectFamilyKey}::${dnsResultOrderKey}::${apiRootKey}::${timeoutSecondsKey}`;
+  return `${params.account.accountId}::${proxyKey}::${autoSelectFamilyKey}::${dnsResultOrderKey}::${timeoutSecondsKey}`;
 }
 
 function setCachedTelegramClientOptions(
@@ -234,16 +233,14 @@ function resolveTelegramClientOptions(
 
   const proxyUrl = account.config.proxy?.trim();
   const proxyFetch = proxyUrl ? makeProxyFetch(proxyUrl) : undefined;
-  const apiRoot = account.config.apiRoot?.trim() || undefined;
   const fetchImpl = resolveTelegramFetch(proxyFetch, {
     network: account.config.network,
   });
   const clientOptions =
-    fetchImpl || timeoutSeconds || apiRoot
+    fetchImpl || timeoutSeconds
       ? {
           ...(fetchImpl ? { fetch: fetchImpl as unknown as ApiClientOptions["fetch"] } : {}),
           ...(timeoutSeconds ? { timeoutSeconds } : {}),
-          ...(apiRoot ? { apiRoot } : {}),
         }
       : undefined;
   if (cacheKey) {
@@ -394,11 +391,9 @@ function buildTelegramThreadReplyParams(params: {
       threadParams.reply_parameters = {
         message_id: replyToMessageId,
         quote: params.quoteText.trim(),
-        allow_sending_without_reply: true,
       };
     } else {
       threadParams.reply_to_message_id = replyToMessageId;
-      threadParams.allow_sending_without_reply = true;
     }
   }
   return threadParams;

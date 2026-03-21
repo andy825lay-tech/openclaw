@@ -192,9 +192,11 @@ describe("monitorMSTeamsProvider lifecycle", () => {
     expect(early).toBe("pending");
 
     abort.abort();
-    const result = await task;
-    expect(result.app).not.toBeNull();
-    await expect(result.shutdown()).resolves.toBeUndefined();
+    await expect(task).resolves.toEqual(
+      expect.objectContaining({
+        shutdown: expect.any(Function),
+      }),
+    );
   });
 
   it("rejects startup when webhook port is already in use", async () => {

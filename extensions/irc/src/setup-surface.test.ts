@@ -1,15 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
+import { buildChannelSetupWizardAdapterFromSetupWizard } from "../../../src/channels/plugins/setup-wizard.js";
+import { createRuntimeEnv } from "../../../test/helpers/extensions/runtime-env.js";
 import {
-  createPluginSetupWizardAdapter,
   createTestWizardPrompter,
-  promptSetupWizardAllowFrom,
-  runSetupWizardConfigure,
   type WizardPrompter,
 } from "../../../test/helpers/extensions/setup-wizard.js";
 import { ircPlugin } from "./channel.js";
+import type { RuntimeEnv } from "./runtime-api.js";
 import type { CoreConfig } from "./types.js";
 
-const ircConfigureAdapter = createPluginSetupWizardAdapter(ircPlugin);
+const ircConfigureAdapter = buildChannelSetupWizardAdapterFromSetupWizard({
+  plugin: ircPlugin,
+  wizard: ircPlugin.setupWizard!,
+});
 
 describe("irc setup wizard", () => {
   it("configures host and nick via setup prompts", async () => {
@@ -49,11 +52,16 @@ describe("irc setup wizard", () => {
       }),
     });
 
-    const result = await runSetupWizardConfigure({
-      configure: ircConfigureAdapter.configure,
+    const runtime: RuntimeEnv = createRuntimeEnv();
+
+    const result = await ircConfigureAdapter.configure({
       cfg: {} as CoreConfig,
+      runtime,
       prompter,
       options: {},
+      accountOverrides: {},
+      shouldPromptAccountIds: false,
+      forceAllowFrom: false,
     });
 
     expect(result.accountId).toBe("default");
@@ -78,9 +86,7 @@ describe("irc setup wizard", () => {
     });
 
     const promptAllowFrom = ircConfigureAdapter.dmPolicy?.promptAllowFrom;
-    if (!promptAllowFrom) {
-      throw new Error("promptAllowFrom unavailable");
-    }
+    expect(promptAllowFrom).toBeTypeOf("function");
 
     const cfg: CoreConfig = {
       channels: {
@@ -95,8 +101,7 @@ describe("irc setup wizard", () => {
       },
     };
 
-    const updated = (await promptSetupWizardAllowFrom({
-      promptAllowFrom,
+    const updated = (await promptAllowFrom?.({
       cfg,
       prompter,
       accountId: "work",

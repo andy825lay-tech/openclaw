@@ -1,4 +1,4 @@
-import { runPassiveAccountLifecycle } from "openclaw/plugin-sdk/channel-lifecycle";
+import { runPassiveAccountLifecycle } from "openclaw/plugin-sdk/channel-runtime";
 
 type StoppableMonitor = {
   stop: () => void;

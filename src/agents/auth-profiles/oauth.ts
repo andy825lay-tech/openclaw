@@ -17,27 +17,7 @@ import { suggestOAuthProfileIdForLegacyDefault } from "./repair.js";
 import { ensureAuthProfileStore, saveAuthProfileStore } from "./store.js";
 import type { AuthProfileStore, OAuthCredential } from "./types.js";
 
-function listOAuthProviderIds(): string[] {
-  if (typeof getOAuthProviders !== "function") {
-    return [];
-  }
-  const providers = getOAuthProviders();
-  if (!Array.isArray(providers)) {
-    return [];
-  }
-  return providers
-    .map((provider) =>
-      provider &&
-      typeof provider === "object" &&
-      "id" in provider &&
-      typeof provider.id === "string"
-        ? provider.id
-        : undefined,
-    )
-    .filter((providerId): providerId is string => typeof providerId === "string");
-}
-
-const OAUTH_PROVIDER_IDS = new Set<string>(listOAuthProviderIds());
+const OAUTH_PROVIDER_IDS = new Set<string>(getOAuthProviders().map((provider) => provider.id));
 
 let providerRuntimePromise:
   | Promise<typeof import("../../plugins/provider-runtime.runtime.js")>
@@ -209,9 +189,6 @@ async function refreshOAuthTokenWithLock(params: {
         : await (async () => {
             const oauthProvider = resolveOAuthProvider(cred.provider);
             if (!oauthProvider) {
-              return null;
-            }
-            if (typeof getOAuthApiKey !== "function") {
               return null;
             }
             return await getOAuthApiKey(oauthProvider, oauthCreds);

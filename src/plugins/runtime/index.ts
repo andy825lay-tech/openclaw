@@ -1,15 +1,21 @@
 import { createRequire } from "node:module";
+import {
+  getApiKeyForModel as getApiKeyForModelRaw,
+  resolveApiKeyForProvider as resolveApiKeyForProviderRaw,
+} from "../../agents/model-auth.js";
 import { resolveStateDir } from "../../config/paths.js";
 import {
-  listRuntimeImageGenerationProviders,
   generateImage,
+  listRuntimeImageGenerationProviders,
 } from "../../image-generation/runtime.js";
-import { resolveGlobalSingleton } from "../../shared/global-singleton.js";
 import {
-  createLazyRuntimeMethod,
-  createLazyRuntimeMethodBinder,
-  createLazyRuntimeModule,
-} from "../../shared/lazy-runtime.js";
+  describeImageFile,
+  describeImageFileWithModel,
+  describeVideoFile,
+  runMediaUnderstandingFile,
+  transcribeAudioFile,
+} from "../../media-understanding/runtime.js";
+import { listSpeechVoices, textToSpeech, textToSpeechTelephony } from "../../tts/runtime.js";
 import { listWebSearchProviders, runWebSearch } from "../../web-search/runtime.js";
 import { createRuntimeAgent } from "./runtime-agent.js";
 import { createRuntimeChannel } from "./runtime-channel.js";
@@ -20,81 +26,6 @@ import { createRuntimeMedia } from "./runtime-media.js";
 import { createRuntimeSystem } from "./runtime-system.js";
 import { createRuntimeTools } from "./runtime-tools.js";
 import type { PluginRuntime } from "./types.js";
-
-function defineCachedValue<T extends object, K extends PropertyKey>(
-  target: T,
-  key: K,
-  create: () => unknown,
-): void {
-  let cached: unknown;
-  let ready = false;
-  Object.defineProperty(target, key, {
-    configurable: true,
-    enumerable: true,
-    get() {
-      if (!ready) {
-        cached = create();
-        ready = true;
-      }
-      return cached;
-    },
-  });
-}
-
-const loadTtsRuntime = createLazyRuntimeModule(() => import("./runtime-tts.runtime.js"));
-const loadMediaUnderstandingRuntime = createLazyRuntimeModule(
-  () => import("./runtime-media-understanding.runtime.js"),
-);
-const loadModelAuthRuntime = createLazyRuntimeModule(
-  () => import("./runtime-model-auth.runtime.js"),
-);
-
-function createRuntimeTts(): PluginRuntime["tts"] {
-  const bindTtsRuntime = createLazyRuntimeMethodBinder(loadTtsRuntime);
-  return {
-    textToSpeech: bindTtsRuntime((runtime) => runtime.textToSpeech),
-    textToSpeechTelephony: bindTtsRuntime((runtime) => runtime.textToSpeechTelephony),
-    listVoices: bindTtsRuntime((runtime) => runtime.listSpeechVoices),
-  };
-}
-
-function createRuntimeMediaUnderstandingFacade(): PluginRuntime["mediaUnderstanding"] {
-  const bindMediaUnderstandingRuntime = createLazyRuntimeMethodBinder(
-    loadMediaUnderstandingRuntime,
-  );
-  return {
-    runFile: bindMediaUnderstandingRuntime((runtime) => runtime.runMediaUnderstandingFile),
-    describeImageFile: bindMediaUnderstandingRuntime((runtime) => runtime.describeImageFile),
-    describeImageFileWithModel: bindMediaUnderstandingRuntime(
-      (runtime) => runtime.describeImageFileWithModel,
-    ),
-    describeVideoFile: bindMediaUnderstandingRuntime((runtime) => runtime.describeVideoFile),
-    transcribeAudioFile: bindMediaUnderstandingRuntime((runtime) => runtime.transcribeAudioFile),
-  };
-}
-
-function createRuntimeModelAuth(): PluginRuntime["modelAuth"] {
-  const getApiKeyForModel = createLazyRuntimeMethod(
-    loadModelAuthRuntime,
-    (runtime) => runtime.getApiKeyForModel,
-  );
-  const resolveApiKeyForProvider = createLazyRuntimeMethod(
-    loadModelAuthRuntime,
-    (runtime) => runtime.resolveApiKeyForProvider,
-  );
-  return {
-    getApiKeyForModel: (params) =>
-      getApiKeyForModel({
-        model: params.model,
-        cfg: params.cfg,
-      }),
-    resolveApiKeyForProvider: (params) =>
-      resolveApiKeyForProvider({
-        provider: params.provider,
-        cfg: params.cfg,
-      }),
-  };
-}
 
 let cachedVersion: string | null = null;
 
@@ -141,12 +72,18 @@ type GatewaySubagentState = {
   subagent: PluginRuntime["subagent"] | undefined;
 };
 
-const gatewaySubagentState = resolveGlobalSingleton<GatewaySubagentState>(
-  GATEWAY_SUBAGENT_SYMBOL,
-  () => ({
-    subagent: undefined,
-  }),
-);
+const gatewaySubagentState: GatewaySubagentState = (() => {
+  const g = globalThis as typeof globalThis & {
+    [GATEWAY_SUBAGENT_SYMBOL]?: GatewaySubagentState;
+  };
+  const existing = g[GATEWAY_SUBAGENT_SYMBOL];
+  if (existing) {
+    return existing;
+  }
+  const created: GatewaySubagentState = { subagent: undefined };
+  g[GATEWAY_SUBAGENT_SYMBOL] = created;
+  return created;
+})();
 
 /**
  * Set the process-global gateway subagent runtime.
@@ -199,7 +136,6 @@ export type CreatePluginRuntimeOptions = {
 };
 
 export function createPluginRuntime(_options: CreatePluginRuntimeOptions = {}): PluginRuntime {
-  const mediaUnderstanding = createRuntimeMediaUnderstandingFacade();
   const runtime = {
     version: resolveVersion(),
     config: createRuntimeConfig(),
@@ -210,6 +146,14 @@ export function createPluginRuntime(_options: CreatePluginRuntimeOptions = {}): 
     ),
     system: createRuntimeSystem(),
     media: createRuntimeMedia(),
+    tts: { textToSpeech, textToSpeechTelephony, listVoices: listSpeechVoices },
+    mediaUnderstanding: {
+      runFile: runMediaUnderstandingFile,
+      describeImageFile,
+      describeImageFileWithModel,
+      describeVideoFile,
+      transcribeAudioFile,
+    },
     imageGeneration: {
       generate: generateImage,
       listProviders: listRuntimeImageGenerationProviders,
@@ -218,22 +162,33 @@ export function createPluginRuntime(_options: CreatePluginRuntimeOptions = {}): 
       listProviders: listWebSearchProviders,
       search: runWebSearch,
     },
+    stt: { transcribeAudioFile },
     tools: createRuntimeTools(),
     channel: createRuntimeChannel(),
     events: createRuntimeEvents(),
     logging: createRuntimeLogging(),
     state: { resolveStateDir },
-  } satisfies Omit<PluginRuntime, "tts" | "mediaUnderstanding" | "stt" | "modelAuth"> &
-    Partial<Pick<PluginRuntime, "tts" | "mediaUnderstanding" | "stt" | "modelAuth">>;
+    modelAuth: {
+      // Wrap model-auth helpers so plugins cannot steer credential lookups:
+      // - agentDir / store: stripped (prevents reading other agents' stores)
+      // - profileId / preferredProfile: stripped (prevents cross-provider
+      //   credential access via profile steering)
+      // Plugins only specify provider/model; the core auth pipeline picks
+      // the appropriate credential automatically.
+      getApiKeyForModel: (params) =>
+        getApiKeyForModelRaw({
+          model: params.model,
+          cfg: params.cfg,
+        }),
+      resolveApiKeyForProvider: (params) =>
+        resolveApiKeyForProviderRaw({
+          provider: params.provider,
+          cfg: params.cfg,
+        }),
+    },
+  } satisfies PluginRuntime;
 
-  defineCachedValue(runtime, "tts", createRuntimeTts);
-  defineCachedValue(runtime, "mediaUnderstanding", () => mediaUnderstanding);
-  defineCachedValue(runtime, "stt", () => ({
-    transcribeAudioFile: mediaUnderstanding.transcribeAudioFile,
-  }));
-  defineCachedValue(runtime, "modelAuth", createRuntimeModelAuth);
-
-  return runtime as PluginRuntime;
+  return runtime;
 }
 
 export type { PluginRuntime } from "./types.js";

@@ -1,45 +1,59 @@
-import { describe, expect, it } from "vitest";
-import { resolveSandboxConfigForAgent } from "../../agents/sandbox/config.js";
-import { buildCronAgentDefaultsConfig } from "./run-config.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  clearFastTestEnv,
+  loadRunCronIsolatedAgentTurn,
+  resolveAgentConfigMock,
+  resetRunCronIsolatedAgentTurnHarness,
+  restoreFastTestEnv,
+  runWithModelFallbackMock,
+} from "./run.test-harness.js";
 
-function makeCfg() {
+type RunModule = typeof import("./run.js");
+type SandboxConfigModule = typeof import("../../agents/sandbox/config.js");
+
+let runCronIsolatedAgentTurn: RunModule["runCronIsolatedAgentTurn"];
+let resolveSandboxConfigForAgent: SandboxConfigModule["resolveSandboxConfigForAgent"];
+
+function makeJob(overrides?: Record<string, unknown>) {
   return {
-    agents: {
-      defaults: {
-        sandbox: {
-          mode: "all" as const,
-          workspaceAccess: "rw" as const,
-          docker: {
-            network: "none",
-            dangerouslyAllowContainerNamespaceJoin: true,
-            dangerouslyAllowExternalBindSources: true,
-          },
-          browser: {
-            enabled: true,
-            autoStart: false,
-          },
-          prune: {
-            maxAgeDays: 7,
+    id: "sandbox-test-job",
+    name: "Sandbox Test",
+    schedule: { kind: "cron", expr: "0 9 * * *", tz: "UTC" },
+    sessionTarget: "isolated",
+    payload: { kind: "agentTurn", message: "test" },
+    ...overrides,
+  } as never;
+}
+
+function makeParams(overrides?: Record<string, unknown>) {
+  return {
+    cfg: {
+      agents: {
+        defaults: {
+          sandbox: {
+            mode: "all" as const,
+            workspaceAccess: "rw" as const,
+            docker: {
+              network: "none",
+              dangerouslyAllowContainerNamespaceJoin: true,
+              dangerouslyAllowExternalBindSources: true,
+            },
+            browser: {
+              enabled: true,
+              autoStart: false,
+            },
+            prune: {
+              maxAgeDays: 7,
+            },
           },
         },
       },
     },
-  };
-}
-
-function buildRunCfg(agentId: string, agentConfigOverride?: Record<string, unknown>) {
-  const cfg = makeCfg();
-  const agentDefaults = buildCronAgentDefaultsConfig({
-    defaults: cfg.agents.defaults,
-    agentConfigOverride: agentConfigOverride as never,
-  });
-  return {
-    ...cfg,
-    agents: {
-      ...cfg.agents,
-      defaults: agentDefaults,
-      list: [{ id: agentId, ...agentConfigOverride }],
-    },
+    deps: {} as never,
+    job: makeJob(),
+    message: "test",
+    sessionKey: "cron:sandbox-test",
+    ...overrides,
   };
 }
 
@@ -69,23 +83,38 @@ function expectDefaultSandboxPreserved(
 }
 
 describe("runCronIsolatedAgentTurn sandbox config preserved", () => {
+  let previousFastTestEnv: string | undefined;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    runCronIsolatedAgentTurn = await loadRunCronIsolatedAgentTurn();
+    ({ resolveSandboxConfigForAgent } = await import("../../agents/sandbox/config.js"));
+    previousFastTestEnv = clearFastTestEnv();
+    resetRunCronIsolatedAgentTurnHarness();
+  });
+
+  afterEach(() => {
+    restoreFastTestEnv(previousFastTestEnv);
+  });
+
   it("preserves default sandbox config when agent entry omits sandbox", async () => {
-    const runCfg = buildRunCfg("worker", {
+    resolveAgentConfigMock.mockReturnValue({
       name: "worker",
       workspace: "/tmp/custom-workspace",
       sandbox: undefined,
       heartbeat: undefined,
       tools: undefined,
     });
+
+    await runCronIsolatedAgentTurn(makeParams({ agentId: "worker" }));
+
+    expect(runWithModelFallbackMock).toHaveBeenCalledTimes(1);
+    const runCfg = runWithModelFallbackMock.mock.calls[0]?.[0]?.cfg;
     expectDefaultSandboxPreserved(runCfg);
-    expect(resolveSandboxConfigForAgent(runCfg, "worker")).toMatchObject({
-      mode: "all",
-      workspaceAccess: "rw",
-    });
   });
 
   it("keeps global sandbox defaults when agent override is partial", async () => {
-    const runCfg = buildRunCfg("specialist", {
+    resolveAgentConfigMock.mockReturnValue({
       sandbox: {
         docker: {
           image: "ghcr.io/openclaw/sandbox:custom",
@@ -98,6 +127,11 @@ describe("runCronIsolatedAgentTurn sandbox config preserved", () => {
         },
       },
     });
+
+    await runCronIsolatedAgentTurn(makeParams({ agentId: "specialist" }));
+
+    expect(runWithModelFallbackMock).toHaveBeenCalledTimes(1);
+    const runCfg = runWithModelFallbackMock.mock.calls[0]?.[0]?.cfg;
     const resolvedSandbox = resolveSandboxConfigForAgent(runCfg, "specialist");
 
     expectDefaultSandboxPreserved(runCfg);
