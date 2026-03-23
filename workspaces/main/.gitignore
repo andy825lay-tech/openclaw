@@ -1,0 +1,24 @@
+# TLS Star Corp — Core Assets (DO NOT COMMIT)
+memory/
+MEMORY.md
+SOUL.md
+AGENTS.md
+IDENTITY.md
+L0_BOOT.md
+L1_*.md
+HEARTBEAT.md
+LESSONS.md
+STYLE.md
+SYNC_LOG.md
+MISSION.md
+USER.md
+TOOLS.md
+BOOTSTRAP.md
+TEAM_OPS.md
+
+# Local assets
+docker/
+models/
+logs/
+*.log
+.env
